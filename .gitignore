@@ -1,0 +1,21 @@
+# Go
+/bin/
+*.exe
+*.test
+*.out
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Docker / data volumes
+infrastructure/data/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+
+docs/

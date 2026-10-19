@@ -1,0 +1,23 @@
+{
+  "name": "searchsync-products-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "searchsync_repl",
+    "database.password": "changeme",
+    "database.dbname": "searchsync",
+    "topic.prefix": "searchsync",
+    "plugin.name": "pgoutput",
+    "slot.name": "searchsync_products_slot",
+    "publication.name": "searchsync_products_publication",
+    "publication.autocreate.mode": "disabled",
+    "table.include.list": "public.products",
+    "snapshot.mode": "initial",
+    "tombstones.on.delete": "true",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false"
+  }
+}
