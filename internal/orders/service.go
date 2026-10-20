@@ -54,6 +54,8 @@ func (s *Service) CreateOrder(ctx context.Context, req CreateRequest, idempotenc
 		CustomerID: req.CustomerID,
 		Status:     "PENDING",
 		TotalCents: req.TotalCents,
+		ProductSKU: req.ProductSKU,
+		Quantity:   req.Quantity,
 	}
 
 	payload, err := json.Marshal(OrderCreated{
@@ -61,6 +63,8 @@ func (s *Service) CreateOrder(ctx context.Context, req CreateRequest, idempotenc
 		OrderID:    order.ID,
 		CustomerID: order.CustomerID,
 		TotalCents: order.TotalCents,
+		ProductSKU: order.ProductSKU,
+		Quantity:   order.Quantity,
 		Version:    1,
 	})
 	if err != nil {
@@ -98,6 +102,22 @@ func (s *Service) CreateOrder(ctx context.Context, req CreateRequest, idempotenc
 	return order, nil
 }
 
+// GetOrder reads one order by id, for GET /orders/:id.
+func (s *Service) GetOrder(ctx context.Context, id string) (Order, error) {
+	return s.orders.Get(ctx, s.pool, id)
+}
+
+// GetTimeline reads an order's saga transition history, for GET
+// /orders/:id/timeline. Returns ErrNotFound if the order itself doesn't
+// exist, distinguishing that from "order exists, saga hasn't transitioned
+// yet" (an empty slice, nil error).
+func (s *Service) GetTimeline(ctx context.Context, id string) ([]Transition, error) {
+	if _, err := s.orders.Get(ctx, s.pool, id); err != nil {
+		return nil, err
+	}
+	return s.orders.GetTimeline(ctx, s.pool, id)
+}
+
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolationCode
@@ -112,6 +132,12 @@ func validateCreate(req CreateRequest, idempotencyKey string) error {
 	}
 	if req.TotalCents < 0 {
 		return fmt.Errorf("%w: total_cents must be >= 0", ErrValidation)
+	}
+	if strings.TrimSpace(req.ProductSKU) == "" {
+		return fmt.Errorf("%w: product_sku is required", ErrValidation)
+	}
+	if req.Quantity <= 0 {
+		return fmt.Errorf("%w: quantity must be > 0", ErrValidation)
 	}
 	return nil
 }

@@ -59,7 +59,7 @@ func TestCreateOrder_RollsBackOnOutboxConflict(t *testing.T) {
 	}
 
 	service := NewService(pool, NewRepository(), outbox.NewRepository())
-	_, err = service.CreateOrder(ctx, CreateRequest{CustomerID: customerID, TotalCents: 1500}, idempotencyKey)
+	_, err = service.CreateOrder(ctx, CreateRequest{CustomerID: customerID, TotalCents: 1500, ProductSKU: "DEMO-001", Quantity: 1}, idempotencyKey)
 	if err == nil {
 		t.Fatal("expected CreateOrder to fail when the outbox insert conflicts, got nil error")
 	}
