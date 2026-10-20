@@ -1,0 +1,30 @@
+{
+  "name": "searchsync-outbox-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "searchsync_repl",
+    "database.password": "changeme",
+    "database.dbname": "searchsync",
+    "topic.prefix": "searchsync_outbox",
+    "plugin.name": "pgoutput",
+    "slot.name": "searchsync_outbox_slot",
+    "publication.name": "searchsync_outbox_publication",
+    "publication.autocreate.mode": "disabled",
+    "table.include.list": "public.outbox_events",
+    "snapshot.mode": "initial",
+    "tombstones.on.delete": "false",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "transforms": "outbox",
+    "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
+    "transforms.outbox.table.field.event.key": "aggregateid",
+    "transforms.outbox.table.expand.json.payload": "true",
+    "transforms.outbox.table.fields.additional.placement": "type:header:eventType",
+    "transforms.outbox.route.by.field": "aggregatetype",
+    "transforms.outbox.route.topic.replacement": "searchsync.outbox.event.${routedByValue}"
+  }
+}

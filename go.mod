@@ -4,6 +4,7 @@ go 1.26.4
 
 require (
 	github.com/elastic/go-elasticsearch/v8 v8.19.7
+	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/twmb/franz-go v1.22.2
 )

@@ -31,15 +31,23 @@ assert p['price_cents'] == 1234
 print('ok')
 "
 
-echo "== wait for CDC propagation =="
+echo "== wait for CDC propagation and search visibility =="
+# Polls /search itself, not just the raw ES document GET: a document GET by
+# id is real-time consistent as soon as it's written, but _search results
+# only reflect it after the index's next refresh cycle. Waiting on the
+# weaker signal let this step race ahead of the one it was gating.
 for i in $(seq 1 20); do
-  if curl -sf "$ES/products/_doc/$ID" | python3 -c "import json,sys; sys.exit(0 if json.load(sys.stdin).get('found') else 1)" 2>/dev/null; then
-    echo "indexed after ${i}x0.5s"
+  if curl -sf "$API/search?q=Smoke" | python3 -c "
+import json, sys
+results = json.load(sys.stdin)['results']
+sys.exit(0 if any(r['id'] == '$ID' for r in results) else 1)
+" 2>/dev/null; then
+    echo "searchable after ${i}x0.5s"
     break
   fi
   sleep 0.5
   if [ "$i" -eq 20 ]; then
-    echo "FAIL: product $ID never appeared in Elasticsearch" >&2
+    echo "FAIL: product $ID never appeared in /search results" >&2
     exit 1
   fi
 done
