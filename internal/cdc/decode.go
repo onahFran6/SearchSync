@@ -41,6 +41,16 @@ func (e Envelope) Row() (ProductRow, error) {
 	}
 }
 
+// Version returns the ordering key used as an Elasticsearch external
+// document version, so a replayed or out-of-order redelivery of an older
+// change can never overwrite a newer one already applied. Debezium always
+// populates source.lsn for streamed and snapshotted PostgreSQL records
+// alike (snapshot records carry the LSN at the time the snapshot was
+// taken), so there is no separate zero-value case to handle here.
+func (e Envelope) Version() int64 {
+	return e.Source.LSN
+}
+
 // DeletedID decodes the primary key of a deleted row from the before state.
 // Debezium's default REPLICA IDENTITY only guarantees the key column(s) are
 // present in "before", not the full prior row.

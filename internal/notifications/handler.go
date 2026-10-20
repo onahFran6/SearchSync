@@ -11,9 +11,42 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/francisonah/searchsync/internal/orders"
+	"github.com/francisonah/searchsync/internal/platform"
 )
 
 const pgUniqueViolationCode = "23505"
+
+// ErrPermanent marks a failure that will never succeed on retry (a
+// malformed event payload, a missing eventId). classify checks for it with
+// errors.Is before falling back to Postgres-error-code-based
+// classification.
+var ErrPermanent = errors.New("notifications: permanent failure")
+
+// permanentPostgresCodes are error classes that mean the input itself is
+// invalid, not that the database is unavailable: not-null violation, check
+// violation, invalid text representation, foreign-key violation. Retrying
+// the exact same statement against the exact same payload would fail again
+// forever, so these go straight to the DLQ.
+var permanentPostgresCodes = map[string]bool{
+	"23502": true, // not_null_violation
+	"23514": true, // check_violation
+	"22P02": true, // invalid_text_representation
+	"23503": true, // foreign_key_violation
+}
+
+// classify distinguishes retryable Postgres/network failures (connection
+// loss, serialization conflicts, deadlocks, timeouts) from permanent ones
+// (constraint violations that indicate a malformed event, not an outage).
+func classify(err error) platform.FailureKind {
+	if errors.Is(err, ErrPermanent) {
+		return platform.FailurePermanent
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && permanentPostgresCodes[pgErr.Code] {
+		return platform.FailurePermanent
+	}
+	return platform.FailureTransient
+}
 
 type Handler struct {
 	pool *pgxpool.Pool
@@ -39,10 +72,10 @@ func (h *Handler) HandleMessage(ctx context.Context, value []byte) error {
 
 	var event orders.OrderCreated
 	if err := json.Unmarshal(value, &event); err != nil {
-		return fmt.Errorf("decode order created event: %w", err)
+		return fmt.Errorf("%w: decode order created event: %v", ErrPermanent, err)
 	}
 	if event.EventID == "" {
-		return fmt.Errorf("order created event missing eventId")
+		return fmt.Errorf("%w: order created event missing eventId", ErrPermanent)
 	}
 
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})

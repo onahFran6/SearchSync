@@ -2,56 +2,36 @@ package notifications
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"github.com/twmb/franz-go/pkg/kgo"
+
+	"github.com/francisonah/searchsync/internal/platform"
 )
 
+// Worker mirrors internal/indexer's Worker: a thin, package-specific
+// configuration of the shared platform.ConsumerLoop engine. See that
+// package's worker.go for why this is embedding rather than a second copy
+// of the retry/DLQ/offset-commit logic.
 type Worker struct {
-	client  *kgo.Client
-	handler *Handler
-	logger  *slog.Logger
+	*platform.ConsumerLoop
 }
 
-func NewWorker(client *kgo.Client, handler *Handler, logger *slog.Logger) *Worker {
-	return &Worker{client: client, handler: handler, logger: logger}
-}
-
-// Run mirrors internal/indexer's Worker: process strictly in delivery order
-// and commit each record's offset only after its local transaction has
-// committed, so a restart resumes from the last durably-applied event and
-// retries (rather than skips) whatever failed.
-func (w *Worker) Run(ctx context.Context) error {
-	for {
-		fetches := w.client.PollFetches(ctx)
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-
-		var fetchErr error
-		fetches.EachError(func(topic string, partition int32, err error) {
-			fetchErr = fmt.Errorf("fetch error on %s[%d]: %w", topic, partition, err)
-		})
-		if fetchErr != nil {
-			return fetchErr
-		}
-
-		iter := fetches.RecordIter()
-		for !iter.Done() {
-			record := iter.Next()
-
-			if err := w.handler.HandleMessage(ctx, record.Value); err != nil {
-				return fmt.Errorf("process record %s[%d]@%d: %w", record.Topic, record.Partition, record.Offset, err)
-			}
-
-			if err := w.client.CommitRecords(ctx, record); err != nil {
-				return fmt.Errorf("commit record %s[%d]@%d: %w", record.Topic, record.Partition, record.Offset, err)
-			}
-
-			w.logger.Info("processed order event",
-				"topic", record.Topic, "partition", record.Partition, "offset", record.Offset,
-				"key", string(record.Key))
-		}
+// NewWorker wires handler.HandleMessage into the shared consumer loop. dlq
+// may be nil only in tests that don't exercise the quarantine path;
+// production wiring (cmd/notifications) always supplies one.
+func NewWorker(client *kgo.Client, handler *Handler, logger *slog.Logger, dlq *platform.DLQProducer, consumerGroup string) *Worker {
+	return &Worker{
+		ConsumerLoop: &platform.ConsumerLoop{
+			Client:        client,
+			ConsumerGroup: consumerGroup,
+			Process: func(ctx context.Context, record *kgo.Record) error {
+				return handler.HandleMessage(ctx, record.Value)
+			},
+			Classify: classify,
+			Retry:    platform.DefaultRetryPolicy,
+			DLQ:      dlq,
+			Logger:   logger,
+		},
 	}
 }
