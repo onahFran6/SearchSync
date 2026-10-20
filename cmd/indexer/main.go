@@ -34,9 +34,16 @@ func main() {
 	}
 	defer kafkaClient.Close()
 
-	worker := indexer.NewWorker(kafkaClient, indexer.NewHandler(searchClient), logger)
+	dlq, err := platform.NewDLQProducer(cfg.kafkaBrokers, cfg.dlqTopic)
+	if err != nil {
+		logger.Error("connect dlq producer", "error", err)
+		os.Exit(1)
+	}
+	defer dlq.Close()
 
-	logger.Info("starting indexer", "topic", cfg.topic, "group", cfg.consumerGroup, "index", cfg.productsIndex)
+	worker := indexer.NewWorker(kafkaClient, indexer.NewHandler(searchClient), logger, dlq, cfg.consumerGroup)
+
+	logger.Info("starting indexer", "topic", cfg.topic, "group", cfg.consumerGroup, "index", cfg.productsIndex, "dlq_topic", cfg.dlqTopic)
 	if err := worker.Run(ctx); err != nil && ctx.Err() == nil {
 		logger.Error("indexer stopped", "error", err)
 		os.Exit(1)
@@ -48,6 +55,7 @@ type config struct {
 	kafkaBrokers     []string
 	topic            string
 	consumerGroup    string
+	dlqTopic         string
 	elasticsearchURL string
 	productsIndex    string
 }
@@ -57,6 +65,7 @@ func loadConfig() config {
 		kafkaBrokers:     strings.Split(getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"), ","),
 		topic:            getenv("PRODUCTS_TOPIC", "searchsync.public.products"),
 		consumerGroup:    getenv("PRODUCTS_CONSUMER_GROUP", "searchsync-indexer"),
+		dlqTopic:         getenv("PRODUCTS_DLQ_TOPIC", "searchsync.dlq.products"),
 		elasticsearchURL: getenv("ELASTICSEARCH_URL", "http://localhost:9200"),
 		productsIndex:    getenv("PRODUCTS_INDEX", "products"),
 	}

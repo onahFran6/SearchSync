@@ -5,7 +5,8 @@ Go-based, implementation-first distributed systems lab: PostgreSQL commits captu
 ## Status
 
 Stage 1 complete: PostgreSQL -> Debezium -> Kafka -> Elasticsearch product search.
-Stage 2 in progress: orders + transactional outbox -> a second Debezium connector with the Outbox Event Router -> a dedicated domain-event topic -> a deduplicating notifications consumer. See [docs/02_TRANSACTIONAL_OUTBOX_IMPLEMENTATION.md](docs/02_TRANSACTIONAL_OUTBOX_IMPLEMENTATION.md).
+Stage 2 complete: orders + transactional outbox -> a second Debezium connector with the Outbox Event Router -> a dedicated domain-event topic -> a deduplicating notifications consumer. See [docs/02_TRANSACTIONAL_OUTBOX_IMPLEMENTATION.md](docs/02_TRANSACTIONAL_OUTBOX_IMPLEMENTATION.md).
+Stage 3 in progress: bounded retries with backoff, dead-letter topics, Elasticsearch stale-replay protection, and bounded Kafka replay tooling for both existing consumers. See [docs/03_CONSUMER_RELIABILITY_IMPLEMENTATION.md](docs/03_CONSUMER_RELIABILITY_IMPLEMENTATION.md).
 
 ## Prerequisites
 
@@ -24,6 +25,7 @@ docker compose -f infrastructure/compose.yaml ps
 ./scripts/register-connector.sh                                   # products connector (default config)
 ./scripts/register-connector.sh infrastructure/debezium/outbox-connector.json  # orders outbox connector
 ./scripts/create-index.sh        # create the Elasticsearch index + alias
+./scripts/create-dlq-topics.sh   # create the two dead-letter topics (Kafka does not auto-create topics here)
 ```
 
 `scripts/migrate.sh` tracks applied files in a `schema_migrations` table, so rerunning it against an already-migrated database only applies new files.
@@ -39,6 +41,21 @@ go run ./cmd/orders           # POST /orders - transactional order + outbox inse
 go run ./cmd/notifications    # consumes the orders outbox topic, dedupes by event_id
 ```
 
+## Replay and recovery tooling (Stage 3)
+
+```bash
+# Bounded, dry-run-by-default Kafka replay through the exact same handler
+# the live consumer uses (processed_events / ES external versioning make
+# it safe to reapply already-processed events):
+go run ./cmd/replay -target=notifications -from-offset=0 -to-offset=10 -partition=0            # dry-run
+go run ./cmd/replay -target=notifications -from-offset=0 -to-offset=10 -partition=0 -dry-run=false
+go run ./cmd/replay -target=indexer -from-time=2026-01-01T00:00:00Z -dry-run=false -products-index=products
+
+# Elasticsearch recovery distinct from Kafka replay: fresh index + snapshot
+# from Postgres + alias switch. See docs/ for the full runbook.
+scripts/reindex-from-postgres.sh products_v2
+```
+
 ## Quality gate
 
 ```bash
@@ -47,10 +64,22 @@ go vet ./...
 go test ./...
 go test -race ./...
 go test -tags=integration ./internal/orders/...   # requires live Postgres; proves order+outbox atomicity
+go test -tags=integration ./internal/indexer/...        # requires live Kafka+Postgres+Elasticsearch; proves crash/restart duplicate-safety
+go test -tags=integration ./internal/notifications/...  # same, for the notifications projection
 ./scripts/smoke-test.sh   # requires the full stack + API + indexer already running
 ```
 
-## Reliability notes
+## Reliability notes (Stage 3: retries, DLQ, replay)
+
+**Retry, DLQ, and offset-commit discipline.** Both consumers now run through a shared `internal/platform.ConsumerLoop`: a transient failure (network error, Elasticsearch 5xx/429, a Postgres connection-class error) is retried up to 5 times with exponential backoff and jitter; a permanent one (malformed payload, an Elasticsearch 4xx, a Postgres constraint violation) skips straight to the consumer's dead-letter topic (`searchsync.dlq.products`, `searchsync.dlq.orders`). An offset is committed only after the record succeeds **or** is durably placed on the DLQ (a synchronously-acknowledged Kafka produce) — if the DLQ itself can't be reached, the consumer stops rather than silently dropping the record. See `docs/evidence/stage-03/00-failure-matrix.md` for the full classification and the per-key-ordering trade-off this implies.
+
+**Elasticsearch stale-replay protection.** Every Elasticsearch write uses `version_type=external` with Debezium's `source.lsn` as the version, so a replayed or out-of-order older event can never overwrite a newer one already applied — Elasticsearch's own 409 version conflict is treated as a safe no-op.
+
+**DLQ entries are not deduplicated across redeliveries of the same poison record** — unlike business-state idempotency, a record that fails to decode has no event ID to dedupe by. Resolve DLQ entries by their `original-topic`/`original-partition`/`original-offset` headers, not by assuming one entry per bad record. See `docs/evidence/stage-03/03-malformed-event-dlq.md`.
+
+**Fail-stop on broker loss.** A Kafka connectivity failure (not a per-record processing failure) surfaces at the poll loop itself and exits the process; recovery is restarting it (a process supervisor's job in production, not something retried in-process).
+
+
 
 **Eventual consistency.** Elasticsearch is a derived, rebuildable read model, never the system of record. A write accepted by the API (or made directly in PostgreSQL via `psql`) is immediately durable and visible through `GET /products/:id`, but `/search` only reflects it after it has traveled PostgreSQL WAL -> Debezium -> Kafka -> the indexer -> Elasticsearch. In local testing this pipeline typically applies within roughly half a second to a few seconds (see `docs/evidence/stage-01/`); there is no hard upper bound, and a stopped indexer or connector can widen the gap indefinitely until it resumes. Do not read your own write back through `/search` and expect it immediately; poll, or read from PostgreSQL if you need the authoritative value right away.
 

@@ -34,9 +34,16 @@ func main() {
 	}
 	defer kafkaClient.Close()
 
-	worker := notifications.NewWorker(kafkaClient, notifications.NewHandler(pool), logger)
+	dlq, err := platform.NewDLQProducer(cfg.kafkaBrokers, cfg.dlqTopic)
+	if err != nil {
+		logger.Error("connect dlq producer", "error", err)
+		os.Exit(1)
+	}
+	defer dlq.Close()
 
-	logger.Info("starting notifications consumer", "topic", cfg.topic, "group", cfg.consumerGroup)
+	worker := notifications.NewWorker(kafkaClient, notifications.NewHandler(pool), logger, dlq, cfg.consumerGroup)
+
+	logger.Info("starting notifications consumer", "topic", cfg.topic, "group", cfg.consumerGroup, "dlq_topic", cfg.dlqTopic)
 	if err := worker.Run(ctx); err != nil && ctx.Err() == nil {
 		logger.Error("notifications consumer stopped", "error", err)
 		os.Exit(1)
@@ -53,6 +60,7 @@ type config struct {
 	kafkaBrokers     []string
 	topic            string
 	consumerGroup    string
+	dlqTopic         string
 }
 
 func loadConfig() config {
@@ -65,6 +73,7 @@ func loadConfig() config {
 		kafkaBrokers:     strings.Split(getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"), ","),
 		topic:            getenv("ORDER_EVENTS_TOPIC", "searchsync.outbox.event.orders"),
 		consumerGroup:    getenv("ORDER_EVENTS_CONSUMER_GROUP", "searchsync-notifications"),
+		dlqTopic:         getenv("ORDER_EVENTS_DLQ_TOPIC", "searchsync.dlq.orders"),
 	}
 }
 
