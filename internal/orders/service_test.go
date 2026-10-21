@@ -13,30 +13,42 @@ func TestValidateCreate(t *testing.T) {
 	}{
 		{
 			name:           "valid",
-			req:            CreateRequest{CustomerID: validCustomerID, TotalCents: 100},
+			req:            CreateRequest{CustomerID: validCustomerID, TotalCents: 100, ProductSKU: "DEMO-001", Quantity: 1},
 			idempotencyKey: "key-1",
 		},
 		{
 			name:           "missing idempotency key",
-			req:            CreateRequest{CustomerID: validCustomerID, TotalCents: 100},
+			req:            CreateRequest{CustomerID: validCustomerID, TotalCents: 100, ProductSKU: "DEMO-001", Quantity: 1},
 			idempotencyKey: "",
 			wantErr:        true,
 		},
 		{
 			name:           "whitespace-only idempotency key",
-			req:            CreateRequest{CustomerID: validCustomerID, TotalCents: 100},
+			req:            CreateRequest{CustomerID: validCustomerID, TotalCents: 100, ProductSKU: "DEMO-001", Quantity: 1},
 			idempotencyKey: "   ",
 			wantErr:        true,
 		},
 		{
 			name:           "invalid customer id",
-			req:            CreateRequest{CustomerID: "not-a-uuid", TotalCents: 100},
+			req:            CreateRequest{CustomerID: "not-a-uuid", TotalCents: 100, ProductSKU: "DEMO-001", Quantity: 1},
 			idempotencyKey: "key-1",
 			wantErr:        true,
 		},
 		{
 			name:           "negative total",
-			req:            CreateRequest{CustomerID: validCustomerID, TotalCents: -1},
+			req:            CreateRequest{CustomerID: validCustomerID, TotalCents: -1, ProductSKU: "DEMO-001", Quantity: 1},
+			idempotencyKey: "key-1",
+			wantErr:        true,
+		},
+		{
+			name:           "missing product sku",
+			req:            CreateRequest{CustomerID: validCustomerID, TotalCents: 100, Quantity: 1},
+			idempotencyKey: "key-1",
+			wantErr:        true,
+		},
+		{
+			name:           "zero quantity",
+			req:            CreateRequest{CustomerID: validCustomerID, TotalCents: 100, ProductSKU: "DEMO-001", Quantity: 0},
 			idempotencyKey: "key-1",
 			wantErr:        true,
 		},

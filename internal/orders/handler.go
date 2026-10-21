@@ -20,6 +20,8 @@ func NewHandler(service *Service, logger *slog.Logger) *Handler {
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /orders", h.create)
+	mux.HandleFunc("GET /orders/{id}", h.get)
+	mux.HandleFunc("GET /orders/{id}/timeline", h.timeline)
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -36,12 +38,32 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, order)
 }
 
+func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
+	order, err := h.service.GetOrder(r.Context(), r.PathValue("id"))
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, order)
+}
+
+func (h *Handler) timeline(w http.ResponseWriter, r *http.Request) {
+	transitions, err := h.service.GetTimeline(r.Context(), r.PathValue("id"))
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, transitions)
+}
+
 func (h *Handler) writeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrValidation):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 	case errors.Is(err, ErrDuplicateRequest):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "duplicate request for this idempotency key"})
+	case errors.Is(err, ErrNotFound):
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "order not found"})
 	default:
 		h.logger.Error("order handler error", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
