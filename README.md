@@ -49,6 +49,12 @@ go run ./cmd/payments-sim      # consumes AuthorizePayment commands; also runs P
 go run ./cmd/saga-coordinator  # orchestrates the saga: event-driven consumer + persisted-deadline poller
 ```
 
+To stop every one of the above, including `go run`'s separately-named child binary (`pkill -f "go run ./cmd/X"` only kills the wrapper, not the process actually holding the port/consumer-group - see `docs/evidence/stage-04/05-restart-mid-saga.md`'s addendum):
+
+```bash
+./scripts/stop-services.sh
+```
+
 ## Replay and recovery tooling (Stage 3)
 
 ```bash
