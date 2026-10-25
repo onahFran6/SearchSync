@@ -21,6 +21,8 @@ The API never touches Elasticsearch. A manual SQL edit reaches search the same w
 6. Indexer upserts or deletes the document in Elasticsearch.
 7. Search requests are served from the index, which is eventually consistent with PostgreSQL.
 
+
+
 ### B - Placing an order
 
 The order and its event commit together, so an event can't be lost or published for an order that doesn't exist.
@@ -34,6 +36,8 @@ The order and its event commit together, so an event can't be lost or published 
 7. Coordinator commands Payments to authorize and waits for approved or declined.
 8. Coordinator moves the order to its next state: confirmed, or cancelled after compensation.
 
+
+
 ### When something fails
 
 Failures are handled by the coordinator and the shared runtime, never by services calling each other.
@@ -43,6 +47,8 @@ Failures are handled by the coordinator and the shared runtime, never by service
 3. Transient errors in any consumer retry with backoff. Malformed or contract-breaking messages go to a DLQ topic so the partition keeps moving.
 4. The replay tool reprocesses a bounded range of a topic through the same handler code the live consumer uses.
 5. Redelivered messages are dropped by message ID, so at-least-once delivery never doubles a side effect.
+
+
 
 ### Rules the whole system keeps
 
@@ -61,29 +67,33 @@ Failures are handled by the coordinator and the shared runtime, never by service
 ## Capabilities
 
 - **Real-time search from CDC.** PostgreSQL is the only system of truth; a Debezium connector
-  streams committed row changes to Kafka, and a Go consumer applies them to Elasticsearch. No
-  code path ever writes to Elasticsearch and PostgreSQL at once.
+streams committed row changes to Kafka, and a Go consumer applies them to Elasticsearch. No
+code path ever writes to Elasticsearch and PostgreSQL at once.
 - **Transactional outbox.** Orders and their domain events are written in a single PostgreSQL
-  transaction, then published to Kafka through a second Debezium connector running the Outbox
-  Event Router - an order can never be saved without its event eventually publishing, and the
-  event can never exist without a corresponding saved order.
+transaction, then published to Kafka through a second Debezium connector running the Outbox
+Event Router - an order can never be saved without its event eventually publishing, and the
+event can never exist without a corresponding saved order.
 - **Orchestrated saga.** A Saga Coordinator drives order fulfilment across Orders, Inventory,
-  and a simulated Payments service: reserving stock, authorizing payment, confirming or
-  compensating (releasing stock) on failure, with durable deadlines and bounded compensation
-  retries that escalate to a human-visible state rather than retrying forever.
+and a simulated Payments service: reserving stock, authorizing payment, confirming or
+compensating (releasing stock) on failure, with durable deadlines and bounded compensation
+retries that escalate to a human-visible state rather than retrying forever.
 - **Consumer reliability.** Every consumer runs on a shared retry/dead-letter engine: bounded
-  retries with backoff for transient failures, immediate quarantine for permanent ones,
-  structural deduplication for at-least-once delivery, and a standalone replay tool that
-  reprocesses a bounded range of a topic through the same handler code the live consumer uses.
+retries with backoff for transient failures, immediate quarantine for permanent ones,
+structural deduplication for at-least-once delivery, and a standalone replay tool that
+reprocesses a bounded range of a topic through the same handler code the live consumer uses.
 - **Observability.** Every service exposes Prometheus metrics and participates in distributed
-  tracing, including across the outbox -> Debezium -> Kafka hop, with Grafana dashboards and
-  alerting on consumer lag, dead-letter backlog, and replication-slot retention.
+tracing, including across the outbox -> Debezium -> Kafka hop, with Grafana dashboards and
+alerting on consumer lag, dead-letter backlog, and replication-slot retention.
+
+
 
 ## Prerequisites
 
 - Docker Engine + Compose plugin
 - Go 1.24+ (toolchain in use: `go version`)
 - `curl`
+
+
 
 ## Setup
 
@@ -128,13 +138,14 @@ go run ./cmd/payments-sim      # consumes AuthorizePayment commands; also runs P
 go run ./cmd/saga-coordinator  # orchestrates the saga: event-driven consumer + persisted-deadline poller
 ```
 
-To stop every one of the above, including `go run`'s separately-named child binary (`pkill -f
-"go run ./cmd/X"` only kills the wrapper, not the process actually holding the port/consumer
+To stop every one of the above, including `go run`'s separately-named child binary (`pkill -f "go run ./cmd/X"` only kills the wrapper, not the process actually holding the port/consumer
 group):
 
 ```bash
 ./scripts/stop-services.sh
 ```
+
+
 
 ## Replay and recovery tooling
 
@@ -151,6 +162,8 @@ go run ./cmd/replay -target=indexer -from-time=2026-01-01T00:00:00Z -dry-run=fal
 scripts/reindex-from-postgres.sh products_v2
 ```
 
+
+
 ## Quality gate
 
 ```bash
@@ -165,6 +178,8 @@ go test -tags=integration ./internal/inventory/...      # requires live Postgres
 go test -tags=integration ./internal/saga/...            # requires live Postgres; proves compensation-retry/escalation SQL
 ./scripts/smoke-test.sh   # requires the full stack + API + indexer already running
 ```
+
+
 
 ## Consumer reliability: retries, DLQ, and replay
 
@@ -214,10 +229,8 @@ open (`searchsync_products_slot`, `searchsync_outbox_slot`, and one per addition
 outbox-owning schema). PostgreSQL retains WAL segments for an open slot until its consumer (Kafka
 Connect) acknowledges them, regardless of disk pressure. If a connector is stopped or falls
 behind for an extended period, retained WAL will grow and can eventually fill the PostgreSQL
-data volume, which can in turn block writes entirely. Monitor replication slot lag (`SELECT
-slot_name, pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn) FROM pg_replication_slots;`) in
-anything beyond local development, and drop a slot (`SELECT
-pg_drop_replication_slot('<slot_name>');`) if its connector is being decommissioned rather than
+data volume, which can in turn block writes entirely. Monitor replication slot lag (`SELECT slot_name, pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn) FROM pg_replication_slots;`) in
+anything beyond local development, and drop a slot (`SELECT pg_drop_replication_slot('<slot_name>');`) if its connector is being decommissioned rather than
 restarted.
 
 **Outbox retention and cleanup.** `outbox_events` rows are never updated or deleted by the
@@ -248,17 +261,17 @@ the same structural-dedup convention established for `processed_events`, reused 
 `processed_commands`/`processed_messages` across every service.
 
 **Concurrent inventory reservation.** `internal/inventory.Service.TryReserveStock` uses one
-conditional `UPDATE inventory.stock SET available = available - $qty WHERE sku = $1 AND
-available >= $qty` inside a local transaction, committed atomically with the reservation row and
+conditional `UPDATE inventory.stock SET available = available - $qty WHERE sku = $1 AND available >= $qty` inside a local transaction, committed atomically with the reservation row and
 its outbox event. Postgres's row-level locking on that `UPDATE` makes two concurrent
-reservations for the same SKU safe under any isolation level, including the default `READ
-COMMITTED` - no `SERIALIZABLE`, no advisory lock, no saga-level coordination needed. Proven
+reservations for the same SKU safe under any isolation level, including the default `READ COMMITTED` - no `SERIALIZABLE`, no advisory lock, no saga-level coordination needed. Proven
 deterministically with ten concurrent goroutines in
 `internal/inventory/reservation_integration_test.go`.
 
 **Durable timeouts, never an in-memory timer.** `internal/saga.Service.RunPoller` queries
 `saga.sagas` for passed `payment_deadline`/`compensation_deadline` values every `PollInterval` -
-the deadline itself was persisted in the same transaction as the state transition that set it,
+on and commit it to main to this branch and then merge it to main then once we have merged it to main we only need to push main to the remote repository and delete the other branch then we'll now proceed to make the whole repository a public repo and before making it a public repo make sure we'll fill the description on the repo
+
+ all the necessary things on the repo before we make it public. the deadline itself was persisted in the same transaction as the state transition that set it,
 so a crashed-and-restarted (even `kill -9`'d) saga coordinator resumes exactly where it left off.
 
 **Compensation is retried, then escalated, never silently abandoned.** A payment decline or
