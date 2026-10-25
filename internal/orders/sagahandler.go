@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/francisonah/searchsync/internal/platform"
-	"github.com/francisonah/searchsync/internal/saga"
+	"github.com/onahFran6/SearchSync/internal/platform"
+	"github.com/onahFran6/SearchSync/internal/saga"
 )
 
 // ErrSagaPermanent marks a failure that will never succeed on retry (a

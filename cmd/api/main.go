@@ -14,10 +14,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/francisonah/searchsync/internal/observability"
-	"github.com/francisonah/searchsync/internal/platform"
-	"github.com/francisonah/searchsync/internal/products"
-	"github.com/francisonah/searchsync/internal/search"
+	"github.com/onahFran6/SearchSync/internal/observability"
+	"github.com/onahFran6/SearchSync/internal/platform"
+	"github.com/onahFran6/SearchSync/internal/products"
+	"github.com/onahFran6/SearchSync/internal/search"
 )
 
 func main() {

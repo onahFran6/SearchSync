@@ -6,8 +6,8 @@ import (
 	"net"
 	"testing"
 
-	"github.com/francisonah/searchsync/internal/platform"
-	"github.com/francisonah/searchsync/internal/search"
+	"github.com/onahFran6/SearchSync/internal/platform"
+	"github.com/onahFran6/SearchSync/internal/search"
 )
 
 func TestClassify(t *testing.T) {

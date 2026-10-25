@@ -16,7 +16,7 @@ import (
 
 // tracerName identifies spans ConsumerLoop starts, in the OpenTelemetry
 // convention of using the instrumented package's import path.
-const tracerName = "github.com/francisonah/searchsync/internal/platform"
+const tracerName = "github.com/onahFran6/SearchSync/internal/platform"
 
 // ProcessFunc applies one Kafka record's side effect. It must be
 // idempotent under at-least-once redelivery: ConsumerLoop guarantees a

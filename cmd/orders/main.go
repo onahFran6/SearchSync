@@ -15,10 +15,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/francisonah/searchsync/internal/observability"
-	"github.com/francisonah/searchsync/internal/orders"
-	"github.com/francisonah/searchsync/internal/outbox"
-	"github.com/francisonah/searchsync/internal/platform"
+	"github.com/onahFran6/SearchSync/internal/observability"
+	"github.com/onahFran6/SearchSync/internal/orders"
+	"github.com/onahFran6/SearchSync/internal/outbox"
+	"github.com/onahFran6/SearchSync/internal/platform"
 )
 
 // cmd/orders runs the HTTP server and the saga-notification

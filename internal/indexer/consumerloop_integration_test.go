@@ -18,8 +18,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/francisonah/searchsync/internal/platform"
-	"github.com/francisonah/searchsync/internal/search"
+	"github.com/onahFran6/SearchSync/internal/platform"
+	"github.com/onahFran6/SearchSync/internal/search"
 )
 
 // TestConsumerLoop_CrashAfterSideEffectBeforeCommit_SurvivesRestart

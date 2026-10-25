@@ -8,12 +8,12 @@ import (
 
 	"go.opentelemetry.io/otel"
 
-	"github.com/francisonah/searchsync/internal/cdc"
-	"github.com/francisonah/searchsync/internal/platform"
-	"github.com/francisonah/searchsync/internal/search"
+	"github.com/onahFran6/SearchSync/internal/cdc"
+	"github.com/onahFran6/SearchSync/internal/platform"
+	"github.com/onahFran6/SearchSync/internal/search"
 )
 
-const tracerName = "github.com/francisonah/searchsync/internal/indexer"
+const tracerName = "github.com/onahFran6/SearchSync/internal/indexer"
 
 // ErrPermanent marks a failure that will never succeed on retry (a
 // malformed envelope, an unsupported operation). classify checks for it

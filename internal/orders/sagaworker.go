@@ -6,7 +6,7 @@ import (
 
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/francisonah/searchsync/internal/platform"
+	"github.com/onahFran6/SearchSync/internal/platform"
 )
 
 // SagaWorker is a thin platform.ConsumerLoop configuration for

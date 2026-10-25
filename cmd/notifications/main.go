@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/francisonah/searchsync/internal/notifications"
-	"github.com/francisonah/searchsync/internal/observability"
-	"github.com/francisonah/searchsync/internal/platform"
+	"github.com/onahFran6/SearchSync/internal/notifications"
+	"github.com/onahFran6/SearchSync/internal/observability"
+	"github.com/onahFran6/SearchSync/internal/platform"
 )
 
 func main() {

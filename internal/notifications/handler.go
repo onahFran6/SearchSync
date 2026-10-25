@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/francisonah/searchsync/internal/orders"
-	"github.com/francisonah/searchsync/internal/platform"
+	"github.com/onahFran6/SearchSync/internal/orders"
+	"github.com/onahFran6/SearchSync/internal/platform"
 )
 
 const pgUniqueViolationCode = "23505"

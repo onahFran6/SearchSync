@@ -18,9 +18,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/francisonah/searchsync/internal/orders"
-	"github.com/francisonah/searchsync/internal/outbox"
-	"github.com/francisonah/searchsync/internal/platform"
+	"github.com/onahFran6/SearchSync/internal/orders"
+	"github.com/onahFran6/SearchSync/internal/outbox"
+	"github.com/onahFran6/SearchSync/internal/platform"
 )
 
 // TestConsumerLoop_CrashAfterTxCommitBeforeOffsetCommit_SurvivesRestart is

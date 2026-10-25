@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/francisonah/searchsync/internal/observability"
-	"github.com/francisonah/searchsync/internal/platform"
-	"github.com/francisonah/searchsync/internal/saga"
+	"github.com/onahFran6/SearchSync/internal/observability"
+	"github.com/onahFran6/SearchSync/internal/platform"
+	"github.com/onahFran6/SearchSync/internal/saga"
 )
 
 // cmd/saga-coordinator runs the event-driven ConsumerLoop and the

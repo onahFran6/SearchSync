@@ -10,9 +10,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/francisonah/searchsync/internal/observability"
-	"github.com/francisonah/searchsync/internal/outbox"
-	"github.com/francisonah/searchsync/internal/saga"
+	"github.com/onahFran6/SearchSync/internal/observability"
+	"github.com/onahFran6/SearchSync/internal/outbox"
+	"github.com/onahFran6/SearchSync/internal/saga"
 )
 
 // ErrPermanent marks a failure that will never succeed on retry (a

@@ -90,7 +90,7 @@ alerting on consumer lag, dead-letter backlog, and replication-slot retention.
 ## Prerequisites
 
 - Docker Engine + Compose plugin
-- Go 1.24+ (toolchain in use: `go version`)
+- Go 1.26+ (toolchain in use: `go version`)
 - `curl`
 
 
@@ -269,9 +269,7 @@ deterministically with ten concurrent goroutines in
 
 **Durable timeouts, never an in-memory timer.** `internal/saga.Service.RunPoller` queries
 `saga.sagas` for passed `payment_deadline`/`compensation_deadline` values every `PollInterval` -
-on and commit it to main to this branch and then merge it to main then once we have merged it to main we only need to push main to the remote repository and delete the other branch then we'll now proceed to make the whole repository a public repo and before making it a public repo make sure we'll fill the description on the repo
-
- all the necessary things on the repo before we make it public. the deadline itself was persisted in the same transaction as the state transition that set it,
+the deadline itself was persisted in the same transaction as the state transition that set it,
 so a crashed-and-restarted (even `kill -9`'d) saga coordinator resumes exactly where it left off.
 
 **Compensation is retried, then escalated, never silently abandoned.** A payment decline or

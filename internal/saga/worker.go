@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/francisonah/searchsync/internal/platform"
+	"github.com/onahFran6/SearchSync/internal/platform"
 )
 
 var permanentPostgresCodes = map[string]bool{

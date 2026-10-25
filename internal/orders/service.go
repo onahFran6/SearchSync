@@ -13,13 +13,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel"
 
-	"github.com/francisonah/searchsync/internal/observability"
-	"github.com/francisonah/searchsync/internal/outbox"
+	"github.com/onahFran6/SearchSync/internal/observability"
+	"github.com/onahFran6/SearchSync/internal/outbox"
 )
 
 const pgUniqueViolationCode = "23505"
 
-const tracerName = "github.com/francisonah/searchsync/internal/orders"
+const tracerName = "github.com/onahFran6/SearchSync/internal/orders"
 
 var (
 	ErrValidation       = errors.New("validation error")

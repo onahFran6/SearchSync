@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/francisonah/searchsync/internal/outbox"
+	"github.com/onahFran6/SearchSync/internal/outbox"
 )
 
 // Querier is satisfied by both pgx.Tx and *pgxpool.Pool.

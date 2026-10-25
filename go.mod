@@ -1,4 +1,4 @@
-module github.com/francisonah/searchsync
+module github.com/onahFran6/SearchSync
 
 go 1.26.4
 

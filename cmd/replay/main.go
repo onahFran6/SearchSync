@@ -30,10 +30,10 @@ import (
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/francisonah/searchsync/internal/indexer"
-	"github.com/francisonah/searchsync/internal/notifications"
-	"github.com/francisonah/searchsync/internal/platform"
-	"github.com/francisonah/searchsync/internal/search"
+	"github.com/onahFran6/SearchSync/internal/indexer"
+	"github.com/onahFran6/SearchSync/internal/notifications"
+	"github.com/onahFran6/SearchSync/internal/platform"
+	"github.com/onahFran6/SearchSync/internal/search"
 )
 
 func main() {

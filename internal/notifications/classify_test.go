@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/francisonah/searchsync/internal/platform"
+	"github.com/onahFran6/SearchSync/internal/platform"
 )
 
 func TestClassify(t *testing.T) {

@@ -12,10 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/francisonah/searchsync/internal/indexer"
-	"github.com/francisonah/searchsync/internal/observability"
-	"github.com/francisonah/searchsync/internal/platform"
-	"github.com/francisonah/searchsync/internal/search"
+	"github.com/onahFran6/SearchSync/internal/indexer"
+	"github.com/onahFran6/SearchSync/internal/observability"
+	"github.com/onahFran6/SearchSync/internal/platform"
+	"github.com/onahFran6/SearchSync/internal/search"
 )
 
 // cmd/indexer has no public HTTP server, so it gets a metrics-only listener
