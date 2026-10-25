@@ -1,0 +1,149 @@
+{
+  "title": "SearchSync Overview",
+  "uid": "searchsync-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Kafka consumer lag (messages behind)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "consumer_lag_records",
+          "legendFormat": "{{consumer_group}} / {{topic}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "title": "Event processing duration (p95) - capture delay proxy",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(event_processing_duration_seconds_bucket[1m])) by (le, consumer_group, topic))",
+          "legendFormat": "{{consumer_group}} / {{topic}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "title": "DLQ depth (total backlog per consumer group)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "dlq_depth",
+          "legendFormat": "{{consumer_group}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "title": "Replication slot retained WAL",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "postgres_replication_slot_retained_bytes",
+          "legendFormat": "{{slot_name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "title": "Elasticsearch index errors (indexer failed attempts, by kind)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(events_failed_total{consumer_group=\"searchsync-indexer\"}[1m])) by (kind)",
+          "legendFormat": "{{kind}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 6,
+      "title": "Saga outcomes (rate per minute, by terminal state)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(saga_completion_seconds_count[1m])) by (outcome)",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(saga_rejected_total[1m])",
+          "legendFormat": "rejected",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 7,
+      "title": "Kafka Connect connector/task status",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "kafka_connect_connector_up",
+          "legendFormat": "{{connector}} (connector)",
+          "refId": "A"
+        },
+        {
+          "expr": "kafka_connect_task_up",
+          "legendFormat": "{{connector}} task {{task_id}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "custom": { "drawStyle": "line", "stepMode": "end" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "title": "Events processed (rate per minute, by result)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(events_processed_total[1m])) by (consumer_group, result)",
+          "legendFormat": "{{consumer_group}} / {{result}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    }
+  ]
+}

@@ -48,7 +48,9 @@ func TestConsumerLoop_CrashAfterTxCommitBeforeOffsetCommit_SurvivesRestart(t *te
 	idempotencyKey := "stage3-crash-test-" + uuid.New().String()
 	customerID := uuid.New().String()
 	service := orders.NewService(pool, orders.NewRepository(), outbox.NewRepository())
-	order, err := service.CreateOrder(ctx, orders.CreateRequest{CustomerID: customerID, TotalCents: 7777}, idempotencyKey)
+	order, err := service.CreateOrder(ctx, orders.CreateRequest{
+		CustomerID: customerID, TotalCents: 7777, ProductSKU: "DEMO-001", Quantity: 1,
+	}, idempotencyKey)
 	if err != nil {
 		t.Fatalf("create test order: %v", err)
 	}

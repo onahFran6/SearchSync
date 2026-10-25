@@ -8,10 +8,9 @@
 # only matches the wrapper and leaves the child - the one actually
 # binding ports and holding Kafka consumer-group membership - running.
 # Verified live while debugging "address already in use" on a restart
-# attempt; see docs/evidence/stage-04/05-restart-mid-saga.md's addendum.
-# This script matches both forms for every binary name under cmd/, so a
-# restart never has to fight a stray process left over from an earlier
-# session.
+# attempt. This script matches both forms for every binary name under
+# cmd/, so a restart never has to fight a stray process left over from an
+# earlier session.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

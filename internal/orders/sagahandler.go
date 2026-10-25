@@ -17,7 +17,7 @@ import (
 // ErrSagaPermanent marks a failure that will never succeed on retry (a
 // malformed SagaTransitioned payload). Named distinctly from the
 // package's existing ErrValidation (an HTTP-layer concept) since this is
-// the consumer-side permanent/transient distinction Stage 3 established.
+// the consumer-side permanent/transient distinction established elsewhere.
 var ErrSagaPermanent = errors.New("orders: permanent saga notification failure")
 
 var permanentPostgresCodes = map[string]bool{
@@ -45,8 +45,7 @@ func ClassifySagaNotification(err error) platform.FailureKind {
 // code that ever writes orders.status after creation, and the only
 // writer of the saga_transitions projection - Orders mirrors the saga's
 // state machine onto its own data by consuming events, never by another
-// service reaching into this schema directly (see
-// docs/clarification/stage-04-ownership-decision.md).
+// service reaching into this schema directly.
 type SagaHandler struct {
 	pool *pgxpool.Pool
 }
@@ -57,7 +56,7 @@ func NewSagaHandler(pool *pgxpool.Pool) *SagaHandler {
 
 // HandleMessage decodes one SagaTransitioned event and, in one local
 // transaction: dedups by MessageID against the same processed_events
-// table Stage 2's notifications consumer uses (message/event ids are
+// table the notifications consumer uses (message/event ids are
 // globally unique UUIDs regardless of which topic they came from, so
 // sharing the dedup table avoids a redundant one), appends a
 // saga_transitions row, and updates orders.status to ToState.

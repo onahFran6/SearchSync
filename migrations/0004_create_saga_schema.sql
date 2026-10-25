@@ -1,9 +1,8 @@
--- Stage 4: the saga orchestrator's own schema. Owned by searchsync_app
+-- The saga orchestrator's own schema. Owned by searchsync_app
 -- (the migration-running role) so it can CREATE PUBLICATION, same pattern
 -- migrations/0003 used for outbox_events; searchsync_saga_app (created in
 -- infrastructure/postgres/01_service_roles.sh) is granted only the narrow
--- privileges its application code actually needs. See
--- docs/clarification/stage-04-ownership-decision.md.
+-- privileges its application code actually needs.
 CREATE SCHEMA saga;
 
 -- One row per order's fulfilment saga. saga_id is deliberately the order's

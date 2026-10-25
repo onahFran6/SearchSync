@@ -1,6 +1,6 @@
 // Command replay reconsumes a bounded offset or time range from one of
 // SearchSync's existing topics and reapplies it through the exact same
-// handler the live consumer uses, so Stage 3's idempotency guarantees (the
+// handler the live consumer uses, so the existing idempotency guarantees (the
 // processed_events unique constraint, Elasticsearch external versioning)
 // are what make a replay safe, rather than a second ad-hoc dedup mechanism
 // invented here.

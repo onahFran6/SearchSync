@@ -17,7 +17,7 @@ type SagaWorker struct {
 	*platform.ConsumerLoop
 }
 
-func NewSagaWorker(client *kgo.Client, handler *SagaHandler, logger *slog.Logger, dlq *platform.DLQProducer, consumerGroup string) *SagaWorker {
+func NewSagaWorker(client *kgo.Client, handler *SagaHandler, logger *slog.Logger, dlq *platform.DLQProducer, consumerGroup string, metrics platform.MetricsRecorder) *SagaWorker {
 	return &SagaWorker{
 		ConsumerLoop: &platform.ConsumerLoop{
 			Client:        client,
@@ -29,6 +29,7 @@ func NewSagaWorker(client *kgo.Client, handler *SagaHandler, logger *slog.Logger
 			Retry:    platform.DefaultRetryPolicy,
 			DLQ:      dlq,
 			Logger:   logger,
+			Metrics:  metrics,
 		},
 	}
 }

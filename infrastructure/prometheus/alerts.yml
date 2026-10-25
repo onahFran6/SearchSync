@@ -1,0 +1,46 @@
+# Actionable alerts covering sustained lag growth, Connect task
+# failure, and replication slot disk usage.
+#
+# Thresholds below were checked against real benchmark runs: baseline
+# (15/s) and the first lag-growth run (150/s) both stayed under 100
+# messages of lag, so KafkaConsumerLagGrowing's ">100 and rising for 2m"
+# threshold does not fire on ordinary load; the 400/s saturation run (peak
+# lag 1313) is exactly the case it is meant to catch.
+groups:
+  - name: searchsync-stage-05
+    rules:
+      - alert: KafkaConsumerLagGrowing
+        expr: deriv(consumer_lag_records[5m]) > 0 and consumer_lag_records > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consumer lag for {{ $labels.consumer_group }}/{{ $labels.topic }} has grown for 2+ minutes"
+          description: "consumer_lag_records is {{ $value }} and still rising - the consumer is falling further behind, not just temporarily behind."
+
+      - alert: KafkaConnectTaskDown
+        expr: kafka_connect_task_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kafka Connect task for {{ $labels.connector }} (task {{ $labels.task_id }}) is not RUNNING"
+          description: "No CDC events will reach Kafka for this connector's table(s) until the task recovers."
+
+      - alert: ReplicationSlotRetainedWALHigh
+        expr: postgres_replication_slot_retained_bytes > 536870912
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Replication slot {{ $labels.slot_name }} is retaining more than 512MiB of WAL"
+          description: "A stalled Debezium connector keeps PostgreSQL from reclaiming WAL for this slot - continued growth risks disk exhaustion on the Postgres volume."
+
+      - alert: DLQBacklogGrowing
+        expr: deriv(dlq_depth[10m]) > 0 and dlq_depth > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DLQ backlog for {{ $labels.consumer_group }} is growing"
+          description: "Records are being quarantined faster than anyone is draining/replaying them."

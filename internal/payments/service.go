@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/francisonah/searchsync/internal/observability"
 	"github.com/francisonah/searchsync/internal/outbox"
 	"github.com/francisonah/searchsync/internal/saga"
 )
@@ -58,7 +59,12 @@ func (s *Service) HandleAuthorizePayment(ctx context.Context, value []byte) erro
 		return err
 	}
 	if !isNew {
-		return tx.Commit(ctx)
+		// A unique-violation here already aborted tx at the Postgres
+		// protocol level - tx.Commit would itself fail with
+		// pgx.ErrTxCommitRollback. Returning nil lets the deferred
+		// tx.Rollback discard the aborted transaction, the correct no-op
+		// for an already-applied message.
+		return nil
 	}
 
 	existingStatus, found, err := s.repo.GetAuthorization(ctx, tx, cmd.OrderID)
@@ -132,6 +138,7 @@ func (s *Service) replyAndCommit(ctx context.Context, tx pgx.Tx, cause saga.Enve
 		AggregateID:   cause.OrderID,
 		Type:          eventType,
 		Payload:       payload,
+		TraceParent:   observability.TraceParentFromContext(ctx),
 	}); err != nil {
 		return err
 	}

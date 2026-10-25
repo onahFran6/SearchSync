@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/francisonah/searchsync/internal/observability"
 	"github.com/francisonah/searchsync/internal/outbox"
 	"github.com/francisonah/searchsync/internal/saga"
 )
@@ -38,7 +39,7 @@ func NewService(pool *pgxpool.Pool, repo *Repository) *Service {
 // HandleReserveInventory applies one ReserveInventory command. Dedup,
 // reservation lookup, the conditional stock decrement, and the outgoing
 // outbox event are all one local transaction - the same
-// "consumed-message-id + state-change + next-event" atomicity Stage 2
+// "consumed-message-id + state-change + next-event" atomicity
 // established for orders, applied here to Inventory's own schema.
 func (s *Service) HandleReserveInventory(ctx context.Context, value []byte) error {
 	var cmd saga.ReserveInventory
@@ -60,7 +61,14 @@ func (s *Service) HandleReserveInventory(ctx context.Context, value []byte) erro
 		return err
 	}
 	if !isNew {
-		return tx.Commit(ctx)
+		// A unique-violation here already aborted tx at the Postgres
+		// protocol level (any error inside a transaction poisons it until
+		// ROLLBACK) - tx.Commit would itself fail with
+		// pgx.ErrTxCommitRollback. Returning nil and letting the deferred
+		// tx.Rollback discard the aborted transaction is the correct
+		// no-op; there is nothing to persist for an already-applied
+		// message anyway.
+		return nil
 	}
 
 	_, found, err := s.repo.GetReservation(ctx, tx, cmd.OrderID)
@@ -126,7 +134,14 @@ func (s *Service) HandleReleaseInventory(ctx context.Context, value []byte) erro
 		return err
 	}
 	if !isNew {
-		return tx.Commit(ctx)
+		// A unique-violation here already aborted tx at the Postgres
+		// protocol level (any error inside a transaction poisons it until
+		// ROLLBACK) - tx.Commit would itself fail with
+		// pgx.ErrTxCommitRollback. Returning nil and letting the deferred
+		// tx.Rollback discard the aborted transaction is the correct
+		// no-op; there is nothing to persist for an already-applied
+		// message anyway.
+		return nil
 	}
 
 	// Deliberately checked (and, if triggered, returned) before any other
@@ -187,6 +202,7 @@ func (s *Service) publish(ctx context.Context, tx pgx.Tx, orderID, aggregateType
 		AggregateID:   orderID,
 		Type:          eventType,
 		Payload:       payload,
+		TraceParent:   observability.TraceParentFromContext(ctx),
 	})
 }
 

@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/francisonah/searchsync/internal/observability"
 	"github.com/francisonah/searchsync/internal/platform"
 	"github.com/francisonah/searchsync/internal/products"
 	"github.com/francisonah/searchsync/internal/search"
@@ -24,6 +26,22 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	shutdownTracing, err := observability.NewTracerProvider(ctx, "searchsync-api", cfg.otlpEndpoint)
+	if err != nil {
+		logger.Error("start tracing", "error", err)
+		os.Exit(1)
+	}
+	defer func() { _ = shutdownTracing(context.Background()) }()
+
+	if cfg.pprofAddr != "" {
+		stopPprof, err := observability.StartPprof(cfg.pprofAddr)
+		if err != nil {
+			logger.Error("start pprof", "error", err)
+			os.Exit(1)
+		}
+		defer func() { _ = stopPprof(context.Background()) }()
+	}
 
 	pool, err := platform.NewPostgresPool(ctx, cfg.postgresDSN())
 	if err != nil {
@@ -38,8 +56,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	metrics := observability.NewMetrics()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(pool))
+	mux.Handle("GET /metrics", metrics.Handler())
 
 	productsHandler := products.NewHandler(products.NewService(products.NewRepository(pool)), logger)
 	productsHandler.Register(mux)
@@ -49,7 +70,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:              cfg.apiAddr,
-		Handler:           mux,
+		Handler:           otelhttp.NewHandler(metrics.InstrumentMux(mux), "searchsync-api"),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -60,6 +81,11 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+	go observability.RunReplicationSlotLagPoller(ctx, pool, metrics, 15*time.Second, logger)
+	go observability.RunConnectStatusPoller(ctx, cfg.connectURL, []string{
+		"searchsync-products-connector", "searchsync-outbox-connector",
+		"searchsync-saga-connector", "searchsync-inventory-connector", "searchsync-payments-connector",
+	}, metrics, 15*time.Second, logger)
 
 	<-ctx.Done()
 	logger.Info("shutting down")
@@ -94,6 +120,9 @@ type config struct {
 	elasticsearchURL string
 	productsIndex    string
 	apiAddr          string
+	connectURL       string
+	otlpEndpoint     string
+	pprofAddr        string
 }
 
 func loadConfig() config {
@@ -105,7 +134,10 @@ func loadConfig() config {
 		postgresPassword: os.Getenv("POSTGRES_PASSWORD"),
 		elasticsearchURL: getenv("ELASTICSEARCH_URL", "http://localhost:9200"),
 		productsIndex:    getenv("PRODUCTS_INDEX", "products"),
-		apiAddr:          getenv("API_ADDR", ":8080"),
+		apiAddr:          getenv("API_ADDR", ":8081"),
+		connectURL:       getenv("KAFKA_CONNECT_URL", "http://localhost:8083"),
+		otlpEndpoint:     getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
+		pprofAddr:        os.Getenv("API_PPROF_ADDR"),
 	}
 }
 

@@ -1,4 +1,4 @@
--- Deterministic seed data used by the Stage 1 experiments (snapshot,
+-- Deterministic seed data used by the CDC experiments (snapshot,
 -- out-of-band mutation, etc). SKUs are stable identifiers across reruns.
 INSERT INTO products (sku, name, description, category, price_cents) VALUES
   ('DEMO-001', 'MacBook Air 13"', 'Apple MacBook Air, M-series', 'laptops', 99900),

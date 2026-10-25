@@ -23,7 +23,7 @@ import (
 )
 
 // TestConsumerLoop_CrashAfterSideEffectBeforeCommit_SurvivesRestart
-// reproduces the headline Stage 3 scenario against the live Compose stack
+// reproduces the headline crash-recovery scenario against the live Compose stack
 // (real Postgres -> Debezium -> Kafka -> Elasticsearch), not just the
 // in-memory fakes in internal/platform/consumerloop_test.go: a fresh
 // product row is written, the indexer's real ConsumerLoop runs with a
@@ -52,11 +52,11 @@ func TestConsumerLoop_CrashAfterSideEffectBeforeCommit_SurvivesRestart(t *testin
 	}
 	searchClient := search.NewClient(esClient, productsIndexFromEnv())
 
-	sku := "STAGE3-CRASH-" + uuid.New().String()[:8]
+	sku := "CRASH-TEST-" + uuid.New().String()[:8]
 	var productID int64
 	err = pool.QueryRow(ctx, `
 		INSERT INTO products (sku, name, description, category, price_cents)
-		VALUES ($1, 'Stage 3 crash test product', 'd', 'test', 12345)
+		VALUES ($1, 'crash recovery test product', 'd', 'test', 12345)
 		RETURNING id`, sku).Scan(&productID)
 	if err != nil {
 		t.Fatalf("insert test product: %v", err)

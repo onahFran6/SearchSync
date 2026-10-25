@@ -6,10 +6,9 @@ package saga
 //
 //   - MessageID is unique per message and is what each receiving service's
 //     processed_commands/processed_messages unique constraint dedupes on -
-//     the same mechanism as Stage 2's processed_events, one level up.
+//     the same mechanism as processed_events, one level up.
 //   - CorrelationID and SagaID are both the order's id for this stage (one
-//     saga per order; see docs/clarification/stage-04-ownership-decision.md
-//     for why no separate saga id is minted). They are still carried as
+//     saga per order; no separate saga id is minted). They are still carried as
 //     distinct fields, not collapsed into OrderID, because CorrelationID is
 //     the generic "which business process" tracing concept while SagaID is
 //     specifically "which row in saga.sagas" - a later stage could split

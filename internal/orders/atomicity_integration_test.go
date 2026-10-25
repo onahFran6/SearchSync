@@ -15,10 +15,10 @@ import (
 	"github.com/francisonah/searchsync/internal/outbox"
 )
 
-// TestCreateOrder_RollsBackOnOutboxConflict proves the hard constraint from
-// docs/02_TRANSACTIONAL_OUTBOX_IMPLEMENTATION.md: the order insert and the
-// outbox insert share one transaction, so if the outbox insert fails, the
-// order insert must not be committed either. It forces the failure by
+// TestCreateOrder_RollsBackOnOutboxConflict proves the hard constraint that
+// the order insert and the outbox insert share one transaction, so if the
+// outbox insert fails, the order insert must not be committed either. It
+// forces the failure by
 // pre-seeding an outbox_events row whose id collides with the one
 // CreateOrder will deterministically derive for a chosen idempotency key.
 //

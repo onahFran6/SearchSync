@@ -12,6 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	"github.com/francisonah/searchsync/internal/observability"
 	"github.com/francisonah/searchsync/internal/payments"
 	"github.com/francisonah/searchsync/internal/platform"
 )
@@ -22,6 +25,22 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	shutdownTracing, err := observability.NewTracerProvider(ctx, "searchsync-payments", cfg.otlpEndpoint)
+	if err != nil {
+		logger.Error("start tracing", "error", err)
+		os.Exit(1)
+	}
+	defer func() { _ = shutdownTracing(context.Background()) }()
+
+	if cfg.pprofAddr != "" {
+		stopPprof, err := observability.StartPprof(cfg.pprofAddr)
+		if err != nil {
+			logger.Error("start pprof", "error", err)
+			os.Exit(1)
+		}
+		defer func() { _ = stopPprof(context.Background()) }()
+	}
 
 	pool, err := platform.NewPostgresPool(ctx, cfg.postgresDSN())
 	if err != nil {
@@ -44,14 +63,17 @@ func main() {
 	}
 	defer dlq.Close()
 
+	metrics := observability.NewMetrics()
+
 	repo := payments.NewRepository()
 	service := payments.NewService(pool, repo)
-	worker := payments.NewWorker(kafkaClient, service, logger, dlq, cfg.consumerGroup)
+	worker := payments.NewWorker(kafkaClient, service, logger, dlq, cfg.consumerGroup, metrics)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(pool))
+	mux.Handle("GET /metrics", metrics.Handler())
 	payments.NewDevHandler(pool, repo, logger).Register(mux)
-	server := &http.Server{Addr: cfg.apiAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Addr: cfg.apiAddr, Handler: otelhttp.NewHandler(metrics.InstrumentMux(mux), "searchsync-payments"), ReadHeaderTimeout: 5 * time.Second}
 
 	errCh := make(chan error, 2)
 	go func() {
@@ -66,6 +88,7 @@ func main() {
 			errCh <- fmt.Errorf("consumer: %w", err)
 		}
 	}()
+	go observability.RunLagPoller(ctx, kafkaClient, cfg.consumerGroup, []string{cfg.dlqTopic}, metrics, 10*time.Second, logger)
 
 	select {
 	case <-ctx.Done():
@@ -108,6 +131,8 @@ type config struct {
 	consumerGroup    string
 	dlqTopic         string
 	apiAddr          string
+	otlpEndpoint     string
+	pprofAddr        string
 }
 
 func loadConfig() config {
@@ -122,6 +147,8 @@ func loadConfig() config {
 		consumerGroup:    getenv("PAYMENTS_CONSUMER_GROUP", "searchsync-payments"),
 		dlqTopic:         getenv("PAYMENTS_DLQ_TOPIC", "searchsync.dlq.payments"),
 		apiAddr:          getenv("PAYMENTS_API_ADDR", ":8085"),
+		otlpEndpoint:     getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
+		pprofAddr:        os.Getenv("PAYMENTS_PPROF_ADDR"),
 	}
 }
 

@@ -14,7 +14,7 @@ CREATE TABLE orders (
 -- table.field.event.key=aggregateid, route.by.field=aggregatetype) so the
 -- connector config needs no field-name overrides. Rows are immutable after
 -- insert; retention/cleanup is handled separately once delivery and WAL
--- retention guarantees are confirmed (see docs/evidence/stage-02).
+-- retention guarantees are confirmed.
 CREATE TABLE outbox_events (
   id UUID PRIMARY KEY,
   aggregatetype TEXT NOT NULL,

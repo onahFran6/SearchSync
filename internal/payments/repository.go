@@ -49,8 +49,8 @@ func NewRepository() *Repository {
 	return &Repository{}
 }
 
-// InsertProcessedCommand is the same structural dedup every Stage 4
-// service uses: true means proceed, false means this exact message was
+// InsertProcessedCommand is the same structural dedup every new service
+// uses: true means proceed, false means this exact message was
 // already applied.
 func (r *Repository) InsertProcessedCommand(ctx context.Context, q Querier, messageID string) (bool, error) {
 	_, err := q.Exec(ctx, `INSERT INTO payments.processed_commands (message_id) VALUES ($1)`, messageID)
@@ -120,10 +120,10 @@ func (r *Repository) InsertAuthorization(ctx context.Context, q Querier, orderID
 // comment.
 func (r *Repository) InsertOutboxEvent(ctx context.Context, q Querier, event outbox.Event) error {
 	const query = `
-		INSERT INTO payments.outbox_events (id, aggregatetype, aggregateid, type, payload)
-		VALUES ($1, $2, $3, $4, $5)`
+		INSERT INTO payments.outbox_events (id, aggregatetype, aggregateid, type, payload, trace_parent)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''))`
 
-	_, err := q.Exec(ctx, query, event.ID, event.AggregateType, event.AggregateID, event.Type, event.Payload)
+	_, err := q.Exec(ctx, query, event.ID, event.AggregateType, event.AggregateID, event.Type, event.Payload, event.TraceParent)
 	if err != nil {
 		return fmt.Errorf("insert outbox event: %w", err)
 	}

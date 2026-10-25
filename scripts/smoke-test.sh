@@ -2,8 +2,7 @@
 # End-to-end happy-path check against a running stack (infra up, migrations
 # applied, connector registered, API and indexer running). Exits non-zero on
 # the first failed assertion; intended for manual or CI invocation, not as a
-# substitute for the full practical-experiment suite in
-# docs/01_CDC_SEARCH_IMPLEMENTATION.md.
+# substitute for a full practical-experiment suite.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

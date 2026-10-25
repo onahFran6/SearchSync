@@ -11,11 +11,15 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel"
 
+	"github.com/francisonah/searchsync/internal/observability"
 	"github.com/francisonah/searchsync/internal/outbox"
 )
 
 const pgUniqueViolationCode = "23505"
+
+const tracerName = "github.com/francisonah/searchsync/internal/orders"
 
 var (
 	ErrValidation       = errors.New("validation error")
@@ -71,6 +75,9 @@ func (s *Service) CreateOrder(ctx context.Context, req CreateRequest, idempotenc
 		return Order{}, fmt.Errorf("marshal order created event: %w", err)
 	}
 
+	ctx, span := otel.Tracer(tracerName).Start(ctx, "orders.CreateOrder db.transaction")
+	defer span.End()
+
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Order{}, fmt.Errorf("begin transaction: %w", err)
@@ -88,6 +95,7 @@ func (s *Service) CreateOrder(ctx context.Context, req CreateRequest, idempotenc
 		AggregateID:   order.ID,
 		Type:          "OrderCreated",
 		Payload:       payload,
+		TraceParent:   observability.TraceParentFromContext(ctx),
 	})
 	if err != nil {
 		if isUniqueViolation(err) {

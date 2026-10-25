@@ -1,4 +1,4 @@
--- Stage 4: the simulated Payments service's own schema. Simulation only -
+-- The simulated Payments service's own schema. Simulation only -
 -- no real card data, ever (see docs/GO_ENGINEERING_STANDARDS.md and the
 -- implementation doc's hard constraint).
 CREATE SCHEMA payments;

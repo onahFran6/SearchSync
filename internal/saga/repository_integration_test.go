@@ -35,7 +35,7 @@ func testPool(t *testing.T) *pgxpool.Pool {
 }
 
 // TestAttemptCompensationRetry_RetriesThenEscalates is a regression test
-// for a real bug found live while running Stage 4's Experiment #5
+// for a real bug found live while running Experiment #5
 // (restart mid-saga): the original SQL's `CASE WHEN ... THEN NULL ELSE $3
 // END` left Postgres unable to infer a type for the untyped NULL branch
 // and resolved the whole CASE expression as `text`, which then failed to
@@ -58,10 +58,10 @@ func TestAttemptCompensationRetry_RetriesThenEscalates(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM saga.sagas WHERE order_id = $1`, orderID)
 	})
 
-	if _, ok, err := repo.GuardedTransition(ctx, pool, orderID, StatePending, StateStockReserved); err != nil || !ok {
+	if _, _, ok, err := repo.GuardedTransition(ctx, pool, orderID, StatePending, StateStockReserved); err != nil || !ok {
 		t.Fatalf("transition to STOCK_RESERVED: ok=%v err=%v", ok, err)
 	}
-	if _, ok, err := repo.GuardedTransition(ctx, pool, orderID, StateStockReserved, StateCompensating); err != nil || !ok {
+	if _, _, ok, err := repo.GuardedTransition(ctx, pool, orderID, StateStockReserved, StateCompensating); err != nil || !ok {
 		t.Fatalf("transition to COMPENSATING: ok=%v err=%v", ok, err)
 	}
 	past := time.Now().Add(-time.Second)

@@ -34,7 +34,7 @@ func TestClassify(t *testing.T) {
 }
 
 func newTestService() *Service {
-	return NewService(nil, NewRepository(), DefaultConfig)
+	return NewService(nil, NewRepository(), DefaultConfig, nil)
 }
 
 func TestHandleOrderCreated_MalformedPayloadClassifiesPermanent(t *testing.T) {

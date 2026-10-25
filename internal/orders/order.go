@@ -12,8 +12,8 @@ type Order struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// CreateRequest's ProductSKU/Quantity are Stage 4's addition: the saga
-// needs something concrete to reserve. This stage models the
+// CreateRequest's ProductSKU/Quantity exist for the saga: it
+// needs something concrete to reserve. This models the
 // implementation doc's "simple single-SKU case" - one SKU, one quantity
 // per order - not a line-items table.
 type CreateRequest struct {

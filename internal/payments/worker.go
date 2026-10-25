@@ -35,7 +35,7 @@ type Worker struct {
 	*platform.ConsumerLoop
 }
 
-func NewWorker(client *kgo.Client, service *Service, logger *slog.Logger, dlq *platform.DLQProducer, consumerGroup string) *Worker {
+func NewWorker(client *kgo.Client, service *Service, logger *slog.Logger, dlq *platform.DLQProducer, consumerGroup string, metrics platform.MetricsRecorder) *Worker {
 	return &Worker{
 		ConsumerLoop: &platform.ConsumerLoop{
 			Client:        client,
@@ -47,6 +47,7 @@ func NewWorker(client *kgo.Client, service *Service, logger *slog.Logger, dlq *p
 			Retry:    platform.DefaultRetryPolicy,
 			DLQ:      dlq,
 			Logger:   logger,
+			Metrics:  metrics,
 		},
 	}
 }
