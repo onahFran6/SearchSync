@@ -13,13 +13,15 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/francisonah/searchsync/internal/observability"
 	"github.com/francisonah/searchsync/internal/orders"
 	"github.com/francisonah/searchsync/internal/outbox"
 	"github.com/francisonah/searchsync/internal/platform"
 )
 
-// cmd/orders runs the HTTP server and the Stage 4 saga-notification
+// cmd/orders runs the HTTP server and the saga-notification
 // consumer (SagaWorker) in one process: both write exclusively to
 // orders-owned data (the orders table, the saga_transitions projection),
 // so there is no ownership reason to split them into separate binaries -
@@ -31,6 +33,22 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	shutdownTracing, err := observability.NewTracerProvider(ctx, "searchsync-orders", cfg.otlpEndpoint)
+	if err != nil {
+		logger.Error("start tracing", "error", err)
+		os.Exit(1)
+	}
+	defer func() { _ = shutdownTracing(context.Background()) }()
+
+	if cfg.pprofAddr != "" {
+		stopPprof, err := observability.StartPprof(cfg.pprofAddr)
+		if err != nil {
+			logger.Error("start pprof", "error", err)
+			os.Exit(1)
+		}
+		defer func() { _ = stopPprof(context.Background()) }()
+	}
 
 	pool, err := platform.NewPostgresPool(ctx, cfg.postgresDSN())
 	if err != nil {
@@ -53,17 +71,20 @@ func main() {
 	}
 	defer dlq.Close()
 
+	metrics := observability.NewMetrics()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(pool))
+	mux.Handle("GET /metrics", metrics.Handler())
 
 	service := orders.NewService(pool, orders.NewRepository(), outbox.NewRepository())
 	orders.NewHandler(service, logger).Register(mux)
 
-	sagaWorker := orders.NewSagaWorker(kafkaClient, orders.NewSagaHandler(pool), logger, dlq, cfg.sagaConsumerGroup)
+	sagaWorker := orders.NewSagaWorker(kafkaClient, orders.NewSagaHandler(pool), logger, dlq, cfg.sagaConsumerGroup, metrics)
 
 	server := &http.Server{
 		Addr:              cfg.ordersAPIAddr,
-		Handler:           mux,
+		Handler:           otelhttp.NewHandler(metrics.InstrumentMux(mux), "searchsync-orders"),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -80,6 +101,7 @@ func main() {
 			errCh <- fmt.Errorf("saga consumer: %w", err)
 		}
 	}()
+	go observability.RunLagPoller(ctx, kafkaClient, cfg.sagaConsumerGroup, []string{cfg.sagaDLQTopic}, metrics, 10*time.Second, logger)
 
 	select {
 	case <-ctx.Done():
@@ -120,6 +142,8 @@ type config struct {
 	sagaTransitionedTopic string
 	sagaConsumerGroup     string
 	sagaDLQTopic          string
+	otlpEndpoint          string
+	pprofAddr             string
 }
 
 func loadConfig() config {
@@ -134,6 +158,8 @@ func loadConfig() config {
 		sagaTransitionedTopic: getenv("SAGA_TRANSITIONED_TOPIC", "searchsync.outbox.event.saga_transitioned"),
 		sagaConsumerGroup:     getenv("ORDERS_SAGA_CONSUMER_GROUP", "searchsync-orders-saga"),
 		sagaDLQTopic:          getenv("ORDERS_SAGA_DLQ_TOPIC", "searchsync.dlq.orders_saga"),
+		otlpEndpoint:          getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
+		pprofAddr:             os.Getenv("ORDERS_PPROF_ADDR"),
 	}
 }
 

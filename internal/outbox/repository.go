@@ -28,10 +28,10 @@ func NewRepository() *Repository {
 // atomically with whatever domain write produced the event.
 func (r *Repository) Insert(ctx context.Context, q Querier, event Event) error {
 	const query = `
-		INSERT INTO outbox_events (id, aggregatetype, aggregateid, type, payload)
-		VALUES ($1, $2, $3, $4, $5)`
+		INSERT INTO outbox_events (id, aggregatetype, aggregateid, type, payload, trace_parent)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''))`
 
-	_, err := q.Exec(ctx, query, event.ID, event.AggregateType, event.AggregateID, event.Type, event.Payload)
+	_, err := q.Exec(ctx, query, event.ID, event.AggregateType, event.AggregateID, event.Type, event.Payload, event.TraceParent)
 	if err != nil {
 		return fmt.Errorf("insert outbox event: %w", err)
 	}

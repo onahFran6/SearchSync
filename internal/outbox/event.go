@@ -12,4 +12,9 @@ type Event struct {
 	AggregateID   string
 	Type          string
 	Payload       json.RawMessage
+	// TraceParent is a W3C traceparent string (or "" if the write happened
+	// outside any traced span), persisted so Debezium's outbox EventRouter
+	// can place it as a literal Kafka header. Populate it with
+	// internal/observability.TraceParentFromContext(ctx).
+	TraceParent string
 }

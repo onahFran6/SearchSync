@@ -19,8 +19,7 @@ import (
 )
 
 // adminPool seeds/cleans up test fixtures using searchsync_app (this
-// Compose setup's bootstrap superuser - see
-// docs/clarification/stage-04-ownership-decision.md). appPool, used for
+// Compose setup's bootstrap superuser). appPool, used for
 // the actual code under test below, connects as the real, narrowly
 // scoped searchsync_inventory_app role Inventory runs as in production -
 // deliberately not the same connection as fixture setup, so these tests

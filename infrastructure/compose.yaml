@@ -8,6 +8,8 @@ volumes:
   postgres_data:
   kafka_data:
   es_data:
+  prometheus_data:
+  grafana_data:
 
 services:
   postgres:
@@ -108,6 +110,70 @@ services:
       - es_data:/usr/share/elasticsearch/data
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+
+  # Scrapes every Go binary's /metrics over host.docker.internal
+  # (the binaries themselves run on the host via `go run` - see
+  # infrastructure/prometheus/prometheus.yml's header
+  # comment). extra_hosts makes host.docker.internal resolve on plain
+  # Docker Engine (Linux) too, not just Docker Desktop.
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: searchsync-prometheus
+    networks: [searchsync]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: searchsync-grafana
+    networks: [searchsync]
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-changeme}"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+
+  # Jaeger all-in-one: OTLP native ingestion (grpc 4317, http 4318) plus
+  # its own UI - one container, no separate collector/storage backend,
+  # sufficient for a local benchmarking rig (in-memory storage; traces do
+  # not survive a restart, which is fine for this stage's purpose).
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: searchsync-jaeger
+    networks: [searchsync]
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:16686:16686"
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:16686/"]
       interval: 10s
       timeout: 10s
       retries: 20

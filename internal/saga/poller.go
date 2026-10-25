@@ -121,6 +121,7 @@ func (s *Service) handleCompensationDue(ctx context.Context, row Row, logger *sl
 	if escalated {
 		logger.Error("compensation exhausted, escalating to needs_attention",
 			"order_id", updated.OrderID, "attempts", updated.CompensationAttempts)
+		s.metrics.ObserveSagaCompletion("needs_attention", time.Since(updated.CreatedAt))
 		if err := s.notify(ctx, tx, cause, updated.Version, StateCompensating, StateNeedsAttention,
 			fmt.Sprintf("compensation_exhausted_after_%d_attempts", updated.CompensationAttempts)); err != nil {
 			return err

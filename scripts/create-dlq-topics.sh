@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Creates the dead-letter topics every consumer publishes to. Kafka
 # auto-topic-creation is off in this Compose setup (discovered while
-# testing Stage 3's DLQ path: a produce to a not-yet-existing DLQ topic
+# testing the DLQ path: a produce to a not-yet-existing DLQ topic
 # fails UNKNOWN_TOPIC_OR_PARTITION, which ConsumerLoop correctly treats as
 # "cannot durably quarantine" and refuses to advance the offset for -
 # correct fail-closed behavior, but not what anyone wants from routine

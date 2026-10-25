@@ -16,9 +16,9 @@ var allTriggers = []Trigger{
 	TriggerInventoryReleaseFailed, TriggerCompensationExhausted,
 }
 
-// expectedLegal is the state diagram from docs/04_SAGA_IMPLEMENTATION.md,
-// transcribed independently of the transitions map in state.go so this
-// test actually checks the implementation against the spec rather than
+// expectedLegal is the saga's state diagram, transcribed independently of
+// the transitions map in state.go so this test actually checks the
+// implementation against the spec rather than
 // against itself.
 var expectedLegal = map[State]map[Trigger]State{
 	StatePending: {

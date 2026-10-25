@@ -2,14 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/francisonah/searchsync/internal/observability"
 	"github.com/francisonah/searchsync/internal/platform"
 	"github.com/francisonah/searchsync/internal/saga"
 )
@@ -28,6 +31,22 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	shutdownTracing, err := observability.NewTracerProvider(ctx, "searchsync-saga-coordinator", cfg.otlpEndpoint)
+	if err != nil {
+		logger.Error("start tracing", "error", err)
+		os.Exit(1)
+	}
+	defer func() { _ = shutdownTracing(context.Background()) }()
+
+	if cfg.pprofAddr != "" {
+		stopPprof, err := observability.StartPprof(cfg.pprofAddr)
+		if err != nil {
+			logger.Error("start pprof", "error", err)
+			os.Exit(1)
+		}
+		defer func() { _ = stopPprof(context.Background()) }()
+	}
 
 	pool, err := platform.NewPostgresPool(ctx, cfg.postgresDSN())
 	if err != nil {
@@ -50,10 +69,26 @@ func main() {
 	}
 	defer dlq.Close()
 
-	service := saga.NewService(pool, saga.NewRepository(), cfg.sagaConfig)
-	worker := saga.NewWorker(kafkaClient, service, cfg.topics, logger, dlq, cfg.consumerGroup)
+	// cmd/saga-coordinator has no HTTP server otherwise (pure
+	// consumer + poller). Rather than leaving it unscrapable, it gets a
+	// metrics-only listener like cmd/indexer/cmd/notifications - a
+	// deliberate choice, not an oversight, since saga_completion_seconds
+	// and saga_rejected_total only ever originate here.
+	metrics := observability.NewMetrics()
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("GET /metrics", metrics.Handler())
+	metricsServer := &http.Server{Addr: cfg.metricsAddr, Handler: metricsMux, ReadHeaderTimeout: 5 * time.Second}
 
-	errCh := make(chan error, 2)
+	service := saga.NewService(pool, saga.NewRepository(), cfg.sagaConfig, metrics)
+	worker := saga.NewWorker(kafkaClient, service, cfg.topics, logger, dlq, cfg.consumerGroup, metrics)
+
+	errCh := make(chan error, 3)
+	go func() {
+		logger.Info("starting saga coordinator metrics server", "addr", cfg.metricsAddr)
+		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- fmt.Errorf("metrics server: %w", err)
+		}
+	}()
 	go func() {
 		logger.Info("starting saga coordinator consumer", "group", cfg.consumerGroup, "topics", cfg.topics.Slice())
 		if err := worker.Run(ctx); err != nil && ctx.Err() == nil {
@@ -66,12 +101,19 @@ func main() {
 			errCh <- fmt.Errorf("poller: %w", err)
 		}
 	}()
+	go observability.RunLagPoller(ctx, kafkaClient, cfg.consumerGroup, []string{cfg.dlqTopic}, metrics, 10*time.Second, logger)
 
 	select {
 	case <-ctx.Done():
 		logger.Info("shutting down")
 	case err := <-errCh:
 		logger.Error("saga coordinator stopped", "error", err)
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+		logger.Error("metrics server shutdown error", "error", err)
 	}
 }
 
@@ -86,6 +128,9 @@ type config struct {
 	consumerGroup    string
 	dlqTopic         string
 	sagaConfig       saga.Config
+	metricsAddr      string
+	otlpEndpoint     string
+	pprofAddr        string
 }
 
 func loadConfig() config {
@@ -108,6 +153,9 @@ func loadConfig() config {
 		consumerGroup: getenv("SAGA_CONSUMER_GROUP", "searchsync-saga-coordinator"),
 		dlqTopic:      getenv("SAGA_DLQ_TOPIC", "searchsync.dlq.saga"),
 		sagaConfig:    sagaConfigFromEnv(),
+		metricsAddr:   getenv("SAGA_METRICS_ADDR", ":9103"),
+		otlpEndpoint:  getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
+		pprofAddr:     os.Getenv("SAGA_PPROF_ADDR"),
 	}
 }
 

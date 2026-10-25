@@ -10,13 +10,33 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel"
 
+	"github.com/francisonah/searchsync/internal/observability"
 	"github.com/francisonah/searchsync/internal/outbox"
 )
+
+const tracerName = "github.com/francisonah/searchsync/internal/saga"
 
 // ErrPermanent marks a failure that will never succeed on retry (a
 // malformed message payload).
 var ErrPermanent = errors.New("saga: permanent failure")
+
+// MetricsRecorder is the subset of internal/observability.Metrics the saga
+// service needs to record saga_completion_seconds/saga_rejected_total at
+// the exact moment a transition lands on a terminal state - defined here,
+// not imported from observability, for the same reason
+// internal/platform.ConsumerLoop defines its own MetricsRecorder rather
+// than importing it: *observability.Metrics satisfies this unmodified.
+type MetricsRecorder interface {
+	ObserveSagaCompletion(outcome string, d time.Duration)
+	IncSagaRejected()
+}
+
+type noopMetricsRecorder struct{}
+
+func (noopMetricsRecorder) ObserveSagaCompletion(string, time.Duration) {}
+func (noopMetricsRecorder) IncSagaRejected()                            {}
 
 // Config bounds the coordinator's two durable timeouts. Both are
 // deliberately short defaults suited to local experiments, not production
@@ -47,13 +67,20 @@ var DefaultConfig = Config{
 }
 
 type Service struct {
-	pool *pgxpool.Pool
-	repo *Repository
-	cfg  Config
+	pool    *pgxpool.Pool
+	repo    *Repository
+	cfg     Config
+	metrics MetricsRecorder
 }
 
-func NewService(pool *pgxpool.Pool, repo *Repository, cfg Config) *Service {
-	return &Service{pool: pool, repo: repo, cfg: cfg}
+// NewService builds a saga Service. metrics may be nil (tests, or a binary
+// that hasn't wired observability yet), in which case saga-completion
+// observations are silently discarded.
+func NewService(pool *pgxpool.Pool, repo *Repository, cfg Config, metrics MetricsRecorder) *Service {
+	if metrics == nil {
+		metrics = noopMetricsRecorder{}
+	}
+	return &Service{pool: pool, repo: repo, cfg: cfg, metrics: metrics}
 }
 
 // HandleOrderCreated starts a new saga. It is the only handler that
@@ -67,6 +94,9 @@ func (s *Service) HandleOrderCreated(ctx context.Context, value []byte) error {
 		return fmt.Errorf("%w: OrderCreated missing required fields", ErrPermanent)
 	}
 
+	ctx, span := otel.Tracer(tracerName).Start(ctx, "saga.transition")
+	defer span.End()
+
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -78,7 +108,12 @@ func (s *Service) HandleOrderCreated(ctx context.Context, value []byte) error {
 		return err
 	}
 	if !isNew {
-		return tx.Commit(ctx)
+		// A unique-violation here already aborted tx at the Postgres
+		// protocol level - tx.Commit would itself fail with
+		// pgx.ErrTxCommitRollback. Returning nil lets the deferred
+		// tx.Rollback discard the aborted transaction, the correct no-op
+		// for an already-applied message.
+		return nil
 	}
 
 	if err := s.repo.InsertSaga(ctx, tx, Row{
@@ -115,7 +150,7 @@ func (s *Service) HandleInventoryReserved(ctx context.Context, value []byte) err
 			return err
 		}
 
-		newVersion, ok, err := s.repo.GuardedTransition(ctx, tx, evt.OrderID, StatePending, StateStockReserved)
+		newVersion, _, ok, err := s.repo.GuardedTransition(ctx, tx, evt.OrderID, StatePending, StateStockReserved)
 		if err != nil || !ok {
 			return err
 		}
@@ -145,10 +180,11 @@ func (s *Service) HandleInventoryRejected(ctx context.Context, value []byte) err
 	}
 
 	return s.withTx(ctx, evt.MessageID, func(tx pgx.Tx) error {
-		newVersion, ok, err := s.repo.GuardedTransition(ctx, tx, evt.OrderID, StatePending, StateRejected)
+		newVersion, _, ok, err := s.repo.GuardedTransition(ctx, tx, evt.OrderID, StatePending, StateRejected)
 		if err != nil || !ok {
 			return err
 		}
+		s.metrics.IncSagaRejected()
 		return s.notify(ctx, tx, evt.Envelope, newVersion, StatePending, StateRejected, evt.Reason)
 	})
 }
@@ -162,13 +198,14 @@ func (s *Service) HandlePaymentAuthorized(ctx context.Context, value []byte) err
 	}
 
 	return s.withTx(ctx, evt.MessageID, func(tx pgx.Tx) error {
-		newVersion, ok, err := s.repo.GuardedTransition(ctx, tx, evt.OrderID, StateStockReserved, StateConfirmed)
+		newVersion, createdAt, ok, err := s.repo.GuardedTransition(ctx, tx, evt.OrderID, StateStockReserved, StateConfirmed)
 		if err != nil || !ok {
 			return err
 		}
 		if err := s.repo.ClearPaymentDeadline(ctx, tx, evt.OrderID); err != nil {
 			return err
 		}
+		s.metrics.ObserveSagaCompletion("confirmed", time.Since(createdAt))
 		return s.notify(ctx, tx, evt.Envelope, newVersion, StateStockReserved, StateConfirmed, "payment_authorized")
 	})
 }
@@ -194,13 +231,14 @@ func (s *Service) HandleInventoryReleased(ctx context.Context, value []byte) err
 	}
 
 	return s.withTx(ctx, evt.MessageID, func(tx pgx.Tx) error {
-		newVersion, ok, err := s.repo.GuardedTransition(ctx, tx, evt.OrderID, StateCompensating, StateCancelled)
+		newVersion, createdAt, ok, err := s.repo.GuardedTransition(ctx, tx, evt.OrderID, StateCompensating, StateCancelled)
 		if err != nil || !ok {
 			return err
 		}
 		if err := s.repo.ClearCompensation(ctx, tx, evt.OrderID); err != nil {
 			return err
 		}
+		s.metrics.ObserveSagaCompletion("cancelled", time.Since(createdAt))
 		return s.notify(ctx, tx, evt.Envelope, newVersion, StateCompensating, StateCancelled, "inventory_released")
 	})
 }
@@ -216,13 +254,14 @@ func (s *Service) HandleInventoryReleaseFailed(ctx context.Context, value []byte
 	}
 
 	return s.withTx(ctx, evt.MessageID, func(tx pgx.Tx) error {
-		newVersion, ok, err := s.repo.GuardedTransition(ctx, tx, evt.OrderID, StateCompensating, StateNeedsAttention)
+		newVersion, createdAt, ok, err := s.repo.GuardedTransition(ctx, tx, evt.OrderID, StateCompensating, StateNeedsAttention)
 		if err != nil || !ok {
 			return err
 		}
 		if err := s.repo.ClearCompensation(ctx, tx, evt.OrderID); err != nil {
 			return err
 		}
+		s.metrics.ObserveSagaCompletion("needs_attention", time.Since(createdAt))
 		return s.notify(ctx, tx, evt.Envelope, newVersion, StateCompensating, StateNeedsAttention, evt.Reason)
 	})
 }
@@ -237,7 +276,7 @@ func (s *Service) beginCompensation(ctx context.Context, tx pgx.Tx, cause Envelo
 		return err
 	}
 
-	newVersion, ok, err := s.repo.GuardedTransition(ctx, tx, cause.OrderID, StateStockReserved, StateCompensating)
+	newVersion, _, ok, err := s.repo.GuardedTransition(ctx, tx, cause.OrderID, StateStockReserved, StateCompensating)
 	if err != nil || !ok {
 		return err
 	}
@@ -259,8 +298,15 @@ func (s *Service) beginCompensation(ctx context.Context, tx pgx.Tx, cause Envelo
 }
 
 // withTx wraps the common "begin tx, dedup by messageID, run fn, commit"
-// shape every event handler above shares.
+// shape every event handler above shares. The span started here is the
+// "saga transition" node in the HTTP -> db tx -> Kafka processing ->
+// (ES write | saga transition) pipeline - it covers the same transaction
+// boundary a plain "db.transaction" span would, named for what this
+// particular transaction actually does.
 func (s *Service) withTx(ctx context.Context, messageID string, fn func(tx pgx.Tx) error) error {
+	ctx, span := otel.Tracer(tracerName).Start(ctx, "saga.transition")
+	defer span.End()
+
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -272,7 +318,12 @@ func (s *Service) withTx(ctx context.Context, messageID string, fn func(tx pgx.T
 		return err
 	}
 	if !isNew {
-		return tx.Commit(ctx)
+		// A unique-violation here already aborted tx at the Postgres
+		// protocol level - tx.Commit would itself fail with
+		// pgx.ErrTxCommitRollback. Returning nil lets the deferred
+		// tx.Rollback discard the aborted transaction, the correct no-op
+		// for an already-applied message.
+		return nil
 	}
 
 	if err := fn(tx); err != nil {
@@ -292,6 +343,7 @@ func (s *Service) publish(ctx context.Context, tx pgx.Tx, orderID, aggregateType
 		AggregateID:   orderID,
 		Type:          eventType,
 		Payload:       payload,
+		TraceParent:   observability.TraceParentFromContext(ctx),
 	})
 }
 

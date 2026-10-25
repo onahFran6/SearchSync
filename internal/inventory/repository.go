@@ -36,7 +36,7 @@ func NewRepository() *Repository {
 // true if this is the first time messageID has been seen (the caller
 // should proceed) and false if it is a duplicate (the caller should
 // commit the no-op and stop) - the same structural dedup pattern as
-// Stage 2's processed_events, applied to incoming commands instead of
+// processed_events, applied to incoming commands instead of
 // incoming domain events.
 func (r *Repository) InsertProcessedCommand(ctx context.Context, q Querier, messageID string) (bool, error) {
 	_, err := q.Exec(ctx, `INSERT INTO inventory.processed_commands (message_id) VALUES ($1)`, messageID)
@@ -153,19 +153,18 @@ func (r *Repository) ConsumeDevReleaseFailure(ctx context.Context, q Querier) (b
 // This does NOT reuse internal/outbox.Repository.Insert: that package's
 // SQL names the table as the bare `outbox_events`, which only resolves
 // correctly for roles whose search_path falls through to `public` (true
-// for Stage 1-3's searchsync_app). The dedicated, schema-scoped roles
-// this stage introduces (see
-// docs/clarification/stage-04-ownership-decision.md) deliberately do not
-// rely on search_path for anything - every new repository qualifies its
+// for the original searchsync_app). The dedicated, schema-scoped roles
+// introduced for these services deliberately do not rely on search_path for anything -
+// every new repository qualifies its
 // table names explicitly, including this one, so a misconfigured
 // search_path can fail loudly (permission denied) instead of silently
 // writing to - or reading from - the wrong schema.
 func (r *Repository) InsertOutboxEvent(ctx context.Context, q Querier, event outbox.Event) error {
 	const query = `
-		INSERT INTO inventory.outbox_events (id, aggregatetype, aggregateid, type, payload)
-		VALUES ($1, $2, $3, $4, $5)`
+		INSERT INTO inventory.outbox_events (id, aggregatetype, aggregateid, type, payload, trace_parent)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''))`
 
-	_, err := q.Exec(ctx, query, event.ID, event.AggregateType, event.AggregateID, event.Type, event.Payload)
+	_, err := q.Exec(ctx, query, event.ID, event.AggregateType, event.AggregateID, event.Type, event.Payload, event.TraceParent)
 	if err != nil {
 		return fmt.Errorf("insert outbox event: %w", err)
 	}

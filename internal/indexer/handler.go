@@ -6,15 +6,19 @@ import (
 	"fmt"
 	"strconv"
 
+	"go.opentelemetry.io/otel"
+
 	"github.com/francisonah/searchsync/internal/cdc"
 	"github.com/francisonah/searchsync/internal/platform"
 	"github.com/francisonah/searchsync/internal/search"
 )
 
+const tracerName = "github.com/francisonah/searchsync/internal/indexer"
+
 // ErrPermanent marks a failure that will never succeed on retry (a
 // malformed envelope, an unsupported operation). classify checks for it
 // with errors.Is before falling back to status-code-based classification,
-// so Stage 3's retry loop never burns its attempt budget on input the
+// so the retry loop never burns its attempt budget on input the
 // consumer can never parse.
 var ErrPermanent = errors.New("indexer: permanent failure")
 
@@ -38,6 +42,9 @@ func (h *Handler) HandleMessage(ctx context.Context, value []byte) error {
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrPermanent, err)
 	}
+
+	ctx, span := otel.Tracer(tracerName).Start(ctx, "es.index")
+	defer span.End()
 
 	switch env.Op {
 	case cdc.OpCreate, cdc.OpUpdate, cdc.OpSnapshotRead:

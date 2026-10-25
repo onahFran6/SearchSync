@@ -11,7 +11,7 @@ import (
 // Transition is one row of the saga_transitions projection
 // (migrations/0008_extend_orders_for_saga.sql), built by SagaHandler from
 // saga.SagaTransitioned events - the same "consume an event, write a
-// local projection" pattern Stage 2 used for order_notifications, applied
+// local projection" pattern used earlier for order_notifications, applied
 // here to the saga's own transition history instead of the order's
 // creation.
 type Transition struct {

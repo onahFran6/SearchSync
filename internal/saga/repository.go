@@ -37,6 +37,10 @@ type Row struct {
 	PaymentDeadline      *time.Time
 	CompensationDeadline *time.Time
 	CompensationAttempts int
+	// CreatedAt is order-creation time, the start of the
+	// saga_completion_seconds measurement (see service.go's terminal
+	// transition handlers).
+	CreatedAt time.Time
 }
 
 type Repository struct{}
@@ -45,8 +49,8 @@ func NewRepository() *Repository {
 	return &Repository{}
 }
 
-// InsertProcessedMessage is the same structural dedup every Stage 4
-// service uses: true means this message hasn't been applied yet and the
+// InsertProcessedMessage is the same structural dedup every new service
+// uses: true means this message hasn't been applied yet and the
 // caller should proceed; false means it's a duplicate and the caller
 // should commit the no-op and stop.
 func (r *Repository) InsertProcessedMessage(ctx context.Context, q Querier, messageID string) (bool, error) {
@@ -81,13 +85,13 @@ func (r *Repository) InsertSaga(ctx context.Context, q Querier, row Row) error {
 func (r *Repository) Get(ctx context.Context, q Querier, orderID string) (Row, bool, error) {
 	const query = `
 		SELECT order_id, state, version, sku, quantity, amount_cents,
-		       payment_deadline, compensation_deadline, compensation_attempts
+		       payment_deadline, compensation_deadline, compensation_attempts, created_at
 		FROM saga.sagas WHERE order_id = $1`
 
 	var row Row
 	err := q.QueryRow(ctx, query, orderID).Scan(
 		&row.OrderID, &row.State, &row.Version, &row.SKU, &row.Quantity, &row.AmountCents,
-		&row.PaymentDeadline, &row.CompensationDeadline, &row.CompensationAttempts)
+		&row.PaymentDeadline, &row.CompensationDeadline, &row.CompensationAttempts, &row.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Row{}, false, nil
 	}
@@ -101,21 +105,24 @@ func (r *Repository) Get(ctx context.Context, q Querier, orderID string) (Row, b
 // transition goes through: it only applies if the row is currently in
 // exactly `expected` state. ok=false means it wasn't (already transitioned
 // by an earlier delivery of this same logical event, or genuinely stale) -
-// the caller must treat that as a safe no-op, never as an error.
-func (r *Repository) GuardedTransition(ctx context.Context, q Querier, orderID string, expected, next State) (version int, ok bool, err error) {
+// the caller must treat that as a safe no-op, never as an error. createdAt
+// is returned alongside version so a caller landing on a terminal state can
+// observe saga_completion_seconds (order creation to this moment) without
+// a second round trip.
+func (r *Repository) GuardedTransition(ctx context.Context, q Querier, orderID string, expected, next State) (version int, createdAt time.Time, ok bool, err error) {
 	const query = `
 		UPDATE saga.sagas SET state = $3, version = version + 1, updated_at = now()
 		WHERE order_id = $1 AND state = $2
-		RETURNING version`
+		RETURNING version, created_at`
 
 	row := q.QueryRow(ctx, query, orderID, expected, next)
-	if err := row.Scan(&version); err != nil {
+	if err := row.Scan(&version, &createdAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return 0, false, nil
+			return 0, time.Time{}, false, nil
 		}
-		return 0, false, fmt.Errorf("guarded transition: %w", err)
+		return 0, time.Time{}, false, fmt.Errorf("guarded transition: %w", err)
 	}
-	return version, true, nil
+	return version, createdAt, true, nil
 }
 
 func (r *Repository) SetPaymentDeadline(ctx context.Context, q Querier, orderID string, deadline time.Time) error {
@@ -165,7 +172,7 @@ func (r *Repository) ClearCompensation(ctx context.Context, q Querier, orderID s
 func (r *Repository) ListDuePaymentTimeouts(ctx context.Context, q Querier, now time.Time) ([]Row, error) {
 	const query = `
 		SELECT order_id, state, version, sku, quantity, amount_cents,
-		       payment_deadline, compensation_deadline, compensation_attempts
+		       payment_deadline, compensation_deadline, compensation_attempts, created_at
 		FROM saga.sagas WHERE state = 'STOCK_RESERVED' AND payment_deadline < $1`
 	return r.queryRows(ctx, q, query, now)
 }
@@ -177,7 +184,7 @@ func (r *Repository) ListDuePaymentTimeouts(ctx context.Context, q Querier, now 
 func (r *Repository) ListDueCompensationRetries(ctx context.Context, q Querier, now time.Time) ([]Row, error) {
 	const query = `
 		SELECT order_id, state, version, sku, quantity, amount_cents,
-		       payment_deadline, compensation_deadline, compensation_attempts
+		       payment_deadline, compensation_deadline, compensation_attempts, created_at
 		FROM saga.sagas WHERE state = 'COMPENSATING' AND compensation_deadline < $1`
 	return r.queryRows(ctx, q, query, now)
 }
@@ -193,7 +200,7 @@ func (r *Repository) queryRows(ctx context.Context, q Querier, query string, arg
 	for rows.Next() {
 		var row Row
 		if err := rows.Scan(&row.OrderID, &row.State, &row.Version, &row.SKU, &row.Quantity, &row.AmountCents,
-			&row.PaymentDeadline, &row.CompensationDeadline, &row.CompensationAttempts); err != nil {
+			&row.PaymentDeadline, &row.CompensationDeadline, &row.CompensationAttempts, &row.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan saga row: %w", err)
 		}
 		out = append(out, row)
@@ -224,11 +231,11 @@ func (r *Repository) AttemptCompensationRetry(ctx context.Context, q Querier, or
 			updated_at = now()
 		WHERE order_id = $1 AND state = 'COMPENSATING' AND compensation_deadline < $2
 		RETURNING order_id, state, version, sku, quantity, amount_cents,
-		          payment_deadline, compensation_deadline, compensation_attempts`
+		          payment_deadline, compensation_deadline, compensation_attempts, created_at`
 
 	r2 := q.QueryRow(ctx, query, orderID, now, nextDeadline, maxAttempts)
 	if scanErr := r2.Scan(&row.OrderID, &row.State, &row.Version, &row.SKU, &row.Quantity, &row.AmountCents,
-		&row.PaymentDeadline, &row.CompensationDeadline, &row.CompensationAttempts); scanErr != nil {
+		&row.PaymentDeadline, &row.CompensationDeadline, &row.CompensationAttempts, &row.CreatedAt); scanErr != nil {
 		if errors.Is(scanErr, pgx.ErrNoRows) {
 			return Row{}, false, false, nil
 		}
@@ -242,10 +249,10 @@ func (r *Repository) AttemptCompensationRetry(ctx context.Context, q Querier, or
 // internal/inventory/repository.go's InsertOutboxEvent for why.
 func (r *Repository) InsertOutboxEvent(ctx context.Context, q Querier, event outbox.Event) error {
 	const query = `
-		INSERT INTO saga.outbox_events (id, aggregatetype, aggregateid, type, payload)
-		VALUES ($1, $2, $3, $4, $5)`
+		INSERT INTO saga.outbox_events (id, aggregatetype, aggregateid, type, payload, trace_parent)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''))`
 
-	_, err := q.Exec(ctx, query, event.ID, event.AggregateType, event.AggregateID, event.Type, event.Payload)
+	_, err := q.Exec(ctx, query, event.ID, event.AggregateType, event.AggregateID, event.Type, event.Payload, event.TraceParent)
 	if err != nil {
 		return fmt.Errorf("insert outbox event: %w", err)
 	}

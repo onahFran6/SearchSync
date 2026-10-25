@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Pre-creates the ten Stage 4 command/event/notification topics the new
+# Pre-creates the ten command/event/notification topics the saga's
 # Debezium outbox connectors route into (searchsync-saga-connector,
 # searchsync-inventory-connector, searchsync-payments-connector) - one
-# topic per message type, same granularity as Stage 2's
+# topic per message type, same granularity as
 # searchsync.outbox.event.orders. Same reason as
 # scripts/create-dlq-topics.sh: this Compose Kafka does not auto-create
 # topics, and a connector's first route to a not-yet-existing topic fails

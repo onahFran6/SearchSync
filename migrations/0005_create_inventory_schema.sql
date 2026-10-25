@@ -1,6 +1,5 @@
--- Stage 4: Inventory's own schema. See migrations/0004 and
--- docs/clarification/stage-04-ownership-decision.md for the pattern this
--- follows.
+-- Inventory's own schema. See migrations/0004 for the pattern
+-- this follows.
 CREATE SCHEMA inventory;
 
 -- On-hand count per SKU. The conditional UPDATE Inventory's reservation

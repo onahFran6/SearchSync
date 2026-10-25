@@ -20,10 +20,10 @@ type Worker struct {
 
 // NewWorker wires handler.HandleMessage into the shared consumer loop. dlq
 // may be nil only in tests that don't exercise the quarantine path;
-// production wiring (cmd/indexer) always supplies one, since Stage 3's
+// production wiring (cmd/indexer) always supplies one, since the
 // correctness guarantee is that a permanently unprocessable record is
 // quarantined, never silently dropped.
-func NewWorker(client *kgo.Client, handler *Handler, logger *slog.Logger, dlq *platform.DLQProducer, consumerGroup string) *Worker {
+func NewWorker(client *kgo.Client, handler *Handler, logger *slog.Logger, dlq *platform.DLQProducer, consumerGroup string, metrics platform.MetricsRecorder) *Worker {
 	return &Worker{
 		ConsumerLoop: &platform.ConsumerLoop{
 			Client:        client,
@@ -35,6 +35,7 @@ func NewWorker(client *kgo.Client, handler *Handler, logger *slog.Logger, dlq *p
 			Retry:    platform.DefaultRetryPolicy,
 			DLQ:      dlq,
 			Logger:   logger,
+			Metrics:  metrics,
 		},
 	}
 }
